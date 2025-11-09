@@ -1,0 +1,7 @@
+mkdocs>=1.5.3
+mkdocs-material>=9.4.7
+mkdocstrings[python]
+pytkdocs[numpy-style]
+mkdocs-autorefs>=0.5.0
+mkdocs-glightbox>=0.5.2
+pre_commit>=4.3.0

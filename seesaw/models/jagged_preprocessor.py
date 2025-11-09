@@ -1,0 +1,550 @@
+import logging
+import math
+from typing import Any
+
+import numpy as np
+import torch
+from einops import rearrange
+from einops.layers.torch import Rearrange
+from torch import nn
+
+from seesaw.models.activations import get_activation
+from seesaw.models.layers import FeatureWiseLinear, MeanPoolingLayer
+from seesaw.models.ple import LearnablePiecewiseEncodingLayer, QuantilePiecewiseEncodingLayer
+
+
+class JaggedNumEmbeddingModel(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+        num_numerical_types: int,
+        feature_wise_linear: bool = False,
+        bias: bool = True,
+        use_layernorm: bool = False,
+    ) -> None:
+        super().__init__()
+        self.bias = bias
+        self.use_layernorm = use_layernorm
+
+        if feature_wise_linear:
+            self.per_feature = True
+
+            self.features_linear = FeatureWiseLinear(num_numerical_types, embedding_dim, bias=bias)
+        else:
+            self.per_feature = False
+
+            self.weights = nn.Parameter(torch.empty(num_numerical_types, embedding_dim))
+            if self.bias:
+                self.biases = nn.Parameter(torch.empty(num_numerical_types, embedding_dim))
+
+        if self.use_layernorm:
+            self.norm = nn.LayerNorm(embedding_dim)
+
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        torch.nn.init.kaiming_uniform_(self.weights, a=math.sqrt(5))
+
+        if self.bias:
+            fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.weights)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            torch.nn.init.uniform_(self.biases, -bound, bound)
+
+    def forward(self, x_num: torch.Tensor) -> torch.Tensor:
+        if self.per_feature:
+            x = self.features_linear(x_num)
+        else:
+            x = rearrange(x_num, "b o f -> b o f 1")
+
+            if self.bias:
+                x = x * self.weights + self.biases
+            else:
+                x = x * self.weights
+
+        if self.use_layernorm:
+            x = self.norm(x)
+
+        return x
+
+
+class JaggedPLENumEmbeddingModel(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+        num_numerical_types: int,
+        ple_dct: dict[str, Any],
+        dataset_key: str | None = None,
+        bias: bool = True,
+        use_layernorm: bool = False,
+    ) -> None:
+        super().__init__()
+        self.bias = bias
+        self.use_layernorm = use_layernorm
+
+        learn_bins = ple_dct.get("learn_bins", False)
+        uniform_bins = ple_dct.get("uniform_bins", False)
+
+        if learn_bins and uniform_bins:
+            raise ValueError("Only one of learn_bins or uniform_bins can be True!")
+
+        ples: list[nn.Module] = []
+
+        if learn_bins or uniform_bins:
+            for i in range(num_numerical_types):
+                learnable_ple = LearnablePiecewiseEncodingLayer(
+                    bins=ple_dct["n_bins"],
+                    embedding_dim=embedding_dim,
+                    learn_bins=True if learn_bins else False,
+                    bias=bias,
+                )
+                ples.append(learnable_ple)
+        else:
+            for i in range(num_numerical_types):
+                quantile_ple = QuantilePiecewiseEncodingLayer(
+                    ple_file_hash_str=ple_dct["ple_file_hash_str"],
+                    feature_idx=i,
+                    embedding_dim=embedding_dim,
+                    dataset_key=dataset_key,
+                )
+                ples.append(quantile_ple)
+
+        self.ple = nn.ModuleList(ples)
+
+        if self.use_layernorm:
+            self.norm = nn.LayerNorm(embedding_dim)
+
+    def forward(self, x: torch.Tensor, pad_value: torch.Tensor | None = None) -> torch.Tensor:
+        embeddings = []
+        for i in range(x.shape[2]):
+            x_f = rearrange(x[:, :, i], "b o -> (b o)")
+            emb = self.ple[i](x_f, pad_value)
+            emb = rearrange(emb, "(b o) d -> b o d", b=x.shape[0], o=x.shape[1])
+            embeddings.append(emb)
+
+        x = torch.stack(embeddings, dim=2)
+
+        if self.use_layernorm:
+            x = self.norm(x)
+
+        return x
+
+
+class JaggedCatEmbeddingModel(nn.Module):
+    def __init__(self, embedding_sizes: list[tuple[int, int]], use_layernorm: bool = False) -> None:
+        super().__init__()
+        self.use_layernorm = use_layernorm
+
+        if set(emb_dim for _, emb_dim in embedding_sizes) != {embedding_sizes[0][1]}:
+            raise ValueError("All embedding dimensions must be the same!")
+
+        self.embeddings = nn.ModuleList(
+            [nn.Embedding(num_categories, emb_dim) for num_categories, emb_dim in embedding_sizes]
+        )
+
+        if self.use_layernorm:
+            self.norm = nn.LayerNorm(embedding_sizes[0][1])
+
+    def forward(self, x_cat: torch.Tensor) -> torch.Tensor:
+        embedded = [emb(x_cat[:, :, i]) for i, emb in enumerate(self.embeddings)]
+        x = torch.stack(embedded, dim=2)
+
+        if self.use_layernorm:
+            x = self.norm(x)
+
+        return x
+
+
+class IdentityEmbedder(nn.Module):
+    def __init__(self, embedding_dim: int) -> None:
+        super().__init__()
+        self.embedding_dim = embedding_dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return rearrange(x, "b o f -> b o f 1").expand(-1, -1, -1, self.embedding_dim)
+
+
+class MaskedSequential(nn.Module):
+    def __init__(
+        self,
+        seq: nn.Sequential,
+        first_mask_rearrange: Rearrange | None = None,
+        second_mask_rearrange: Rearrange | None = None,
+        skip_second_mask: bool = False,
+    ) -> None:
+        super().__init__()
+        self.seq = seq
+        self.first_mask_rearrange = first_mask_rearrange
+        self.second_mask_rearrange = second_mask_rearrange
+        self.skip_second_mask = skip_second_mask
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
+        if mask is None:
+            return self.seq(x)
+
+        if self.first_mask_rearrange is not None:
+            first_mask = self.first_mask_rearrange(mask)
+        else:
+            first_mask = mask
+
+        x = x.masked_fill(first_mask, 0.0)  # type: ignore[arg-type]
+
+        x = self.seq(x)
+
+        if self.skip_second_mask:
+            return x
+
+        if self.second_mask_rearrange is not None:
+            second_mask = self.second_mask_rearrange(mask)
+        else:
+            second_mask = first_mask
+
+        x = x.masked_fill(second_mask, 0.0)  # type: ignore[arg-type]
+
+        return x
+
+
+class JaggedPreprocessor(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+        numer_idx: dict[str, np.ndarray],
+        categ_idx: dict[str, np.ndarray],
+        categories: dict[str, np.ndarray],
+        numer_padding_tokens: dict[str, float | None],
+        categ_padding_tokens: dict[str, int | None],
+        numer_feature_wise_linear: bool = False,
+        reduction: str = "mean",
+        conv1d_embedding: bool = False,
+        post_embeddings_dct: dict[str, Any] | None = None,
+        ple_dct: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__()
+        if conv1d_embedding and ple_dct is not None:
+            raise ValueError("conv1d_embedding and ple_dct cannot be used together!")
+
+        self.conv1d_embedding = conv1d_embedding
+
+        self.use_ple = True if ple_dct is not None else False
+
+        if conv1d_embedding:
+            logging.info("Using object conv1d embedding, disabling other embeddings.")
+            reduction = "conv1d"
+            self.disable_embeddings = True
+        else:
+            self.disable_embeddings = False
+
+        self._setup_numer_categ_indices(numer_idx, categ_idx)
+        self._setup_padding_tokens(numer_padding_tokens, categ_padding_tokens)
+
+        self._setup_embeddings(embedding_dim, numer_idx, categories, numer_feature_wise_linear, ple_dct=ple_dct)
+
+        self._setup_projections(embedding_dim, numer_idx, categ_idx, reduction)
+
+        self._setup_post_embeddings(embedding_dim, post_embeddings_dct)
+
+    def _setup_numer_categ_indices(self, numer_idx: dict[str, np.ndarray], categ_idx: dict[str, np.ndarray]) -> None:
+        numer_jagged_idx: list[np.ndarray | None] = []
+        categ_jagged_idx: list[np.ndarray | None] = []
+
+        for key in numer_idx:
+            if key == "events":
+                continue
+
+            numer_idx_key = numer_idx[key]
+            if len(numer_idx_key) > 0:
+                numer_jagged_idx.append(numer_idx_key)
+            else:
+                numer_jagged_idx.append(None)
+
+        for key in categ_idx:
+            if key == "events":
+                continue
+
+            categ_idx_key = categ_idx[key]
+            if len(categ_idx_key) > 0:
+                categ_jagged_idx.append(categ_idx_key)
+            else:
+                categ_jagged_idx.append(None)
+
+        numer_param_jagged_idx = []
+        for idx in numer_jagged_idx:
+            if idx is None:
+                idx = np.array([], dtype=np.int64)
+
+            param = nn.Parameter(torch.tensor(idx, dtype=torch.int64), requires_grad=False)
+            numer_param_jagged_idx.append(param)
+
+        self.numer_jagged_idx = nn.ParameterList(numer_param_jagged_idx)
+
+        categ_param_jagged_idx = []
+        for idx in categ_jagged_idx:
+            if idx is None:
+                idx = np.array([], dtype=np.int64)
+
+            param = nn.Parameter(torch.tensor(idx, dtype=torch.int64), requires_grad=False)
+            categ_param_jagged_idx.append(param)
+
+        self.categ_jagged_idx = nn.ParameterList(categ_param_jagged_idx)
+
+    def _setup_padding_tokens(
+        self,
+        numer_padding_tokens: dict[str, float | None],
+        categ_padding_tokens: dict[str, int | None],
+    ) -> None:
+        self.numer_padding_tokens = nn.ParameterList()
+        for t_num in numer_padding_tokens.values():
+            if t_num is None:
+                numer_param_token = -1.0
+            else:
+                numer_param_token = t_num
+
+            param = nn.Parameter(torch.tensor(numer_param_token, dtype=torch.float32), requires_grad=False)
+            self.numer_padding_tokens.append(param)
+
+        self.categ_padding_tokens = nn.ParameterList()
+        for t_cat in categ_padding_tokens.values():
+            if t_cat is None:
+                categ_param_token = -1
+            else:
+                categ_param_token = t_cat
+
+            param = nn.Parameter(torch.tensor(categ_param_token, dtype=torch.int64), requires_grad=False)
+            self.categ_padding_tokens.append(param)
+
+    def _setup_embeddings(
+        self,
+        embedding_dim: int,
+        numer_idx: dict[str, np.ndarray],
+        categories: dict[str, np.ndarray],
+        numer_feature_wise_linear: bool = False,
+        ple_dct: dict[str, Any] | None = None,
+    ) -> None:
+        if self.disable_embeddings:
+            return None
+
+        numer_embedding_lst: list[nn.Module] = []
+
+        for obj_name, idx in numer_idx.items():
+            if obj_name == "events":
+                continue
+
+            numer_embedder: nn.Module
+
+            if len(idx) == 0:
+                numer_embedder = IdentityEmbedder(embedding_dim)
+            else:
+                if ple_dct is None:
+                    numer_embedder = JaggedNumEmbeddingModel(
+                        embedding_dim,
+                        num_numerical_types=len(idx),
+                        feature_wise_linear=numer_feature_wise_linear,
+                    )
+                else:
+                    numer_embedder = JaggedPLENumEmbeddingModel(
+                        embedding_dim,
+                        num_numerical_types=len(idx),
+                        ple_dct=ple_dct,
+                        dataset_key=obj_name,
+                    )
+
+            numer_embedding_lst.append(numer_embedder)
+
+        self.numer_jagged_embeddings = nn.ModuleList(numer_embedding_lst)
+
+        categ_embeddings_lst: list[nn.Module] = []
+
+        for obj_name, number_categ_arr in categories.items():
+            if obj_name == "events":
+                continue
+
+            categ_embedder: nn.Module
+
+            if number_categ_arr.shape[1] == 0:
+                categ_embedder = IdentityEmbedder(embedding_dim)
+                categ_embeddings_lst.append(categ_embedder)
+                continue
+
+            embedding_sizes = []
+
+            for num_f in range(number_categ_arr.shape[1]):
+                embedding_sizes.append((int(np.max(number_categ_arr[:, num_f])), embedding_dim))
+
+            categ_embedder = JaggedCatEmbeddingModel(embedding_sizes)
+            categ_embeddings_lst.append(categ_embedder)
+
+        self.categ_jagged_embeddings = nn.ModuleList(categ_embeddings_lst)
+
+    def _setup_post_embeddings(self, embedding_dim: int, post_embeddings_dct: dict[str, Any] | None) -> None:
+        if post_embeddings_dct is None:
+            self.post_embeddings = None
+            return None
+
+        post_embeddings: list[nn.Module] = []
+
+        post_bn = post_embeddings_dct.get("batchnorm", False)
+        post_layernorm = post_embeddings_dct.get("layernorm", False)
+        post_act = post_embeddings_dct.get("act", None)
+        post_dropout = post_embeddings_dct.get("dropout", 0.0)
+
+        if post_bn and post_layernorm:
+            raise ValueError("Only one of batchnorm or layernorm can be used in post embeddings!")
+
+        if post_bn:
+            post_embeddings.append(
+                nn.Sequential(
+                    Rearrange("b o e -> b e o"),
+                    nn.BatchNorm1d(embedding_dim),
+                    Rearrange("b e o -> b o e"),
+                )
+            )
+
+        if post_layernorm:
+            post_embeddings.append(nn.LayerNorm(embedding_dim))
+
+        if post_act is not None:
+            post_embeddings.append(get_activation(post_act))
+
+        if post_dropout > 0.0:
+            post_embeddings.append(nn.Dropout(post_dropout))
+
+        if len(post_embeddings) == 0:
+            self.post_embeddings = None
+            return None
+
+        self.post_embeddings = nn.Sequential(*post_embeddings)
+
+    def _setup_projections(
+        self, embedding_dim: int, numer_idx: dict[str, np.ndarray], categ_idx: dict[str, np.ndarray], reduction: str
+    ) -> None:
+        projections: list[nn.Module] = []
+
+        self.masked_mean = False
+
+        for k in numer_idx.keys():
+            if k == "events":
+                continue
+
+            # input: (batch_size, n_objects, features)
+            # itermediate: (batch_size, n_objects, features, embedding_dim)
+            # output: (batch_size, n_objects, embedding_dim)
+
+            numer_idx_k, categ_idx_k = numer_idx[k], categ_idx[k]
+            total_features = len(numer_idx_k) + len(categ_idx_k)
+
+            if reduction == "mean":
+                self.masked_mean = True
+                projections.append(MeanPoolingLayer(dim=2))
+            elif reduction == "reshape":
+                projections.append(
+                    MaskedSequential(
+                        seq=nn.Sequential(
+                            Rearrange("b o f e -> b o (f e)"),
+                            nn.Linear(total_features * embedding_dim, embedding_dim),
+                        ),
+                        first_mask_rearrange=Rearrange("b o -> b o 1 1") if not self.use_ple else None,
+                        skip_second_mask=True,
+                    )
+                )
+            elif reduction == "conv1d":
+                projections.append(
+                    MaskedSequential(
+                        seq=nn.Sequential(
+                            Rearrange("b o f -> b f o"),
+                            nn.BatchNorm1d(total_features),
+                            nn.Conv1d(in_channels=total_features, out_channels=embedding_dim, kernel_size=1),
+                            nn.BatchNorm1d(embedding_dim),
+                            nn.ReLU(),
+                            Rearrange("b e o -> b o e"),
+                        ),
+                        first_mask_rearrange=Rearrange("b o -> b o 1"),
+                    )
+                )
+            elif reduction == "conv2d":
+                projections.append(
+                    MaskedSequential(
+                        seq=nn.Sequential(
+                            Rearrange("b o f e -> b f o e"),
+                            nn.Conv2d(in_channels=total_features, out_channels=1, kernel_size=1),
+                            Rearrange("b 1 o e -> b o e"),
+                        ),
+                        first_mask_rearrange=Rearrange("b o -> b o 1 1") if not self.use_ple else None,
+                        second_mask_rearrange=Rearrange("b o -> b o 1") if not self.use_ple else None,
+                    ),
+                )
+            else:
+                raise ValueError(f"Unknown reduction method: {reduction}!")
+
+        self.projections = nn.ModuleList(projections)
+
+    def forward(self, *Xs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        numer_jagged_embeddings: list[torch.Tensor] = []
+        numer_jagged_masks: list[torch.Tensor] = []
+
+        for i in range(len(Xs)):
+            jagged_idx = self.numer_jagged_idx[i]
+
+            x = Xs[i]
+            x = x[:, :, jagged_idx]
+
+            padding_token = self.numer_padding_tokens[i]
+            mask = torch.isclose(x, padding_token)
+            mask_all = mask.all(dim=-1)
+
+            if self.disable_embeddings:
+                embedded = x
+            elif self.use_ple:
+                embedded = self.numer_jagged_embeddings[i](x, padding_token)
+            else:
+                embedded = self.numer_jagged_embeddings[i](x)
+
+            numer_jagged_masks.append(mask_all)
+            numer_jagged_embeddings.append(embedded)
+
+        categ_jagged_embeddings: list[torch.Tensor] = []
+        categ_jagged_masks: list[torch.Tensor] = []
+
+        for i in range(len(Xs)):
+            jagged_idx = self.categ_jagged_idx[i]
+
+            x = Xs[i]
+            x = x[:, :, jagged_idx].to(torch.int64)
+
+            padding_token = self.categ_padding_tokens[i]
+            mask = x == padding_token
+            mask_all = mask.all(dim=-1)
+
+            if self.disable_embeddings:
+                embedded = x
+            else:
+                embedded = self.categ_jagged_embeddings[i](x)
+
+            categ_jagged_masks.append(mask_all)
+            categ_jagged_embeddings.append(embedded)
+
+        jagged_inputs: list[torch.Tensor] = []
+        jagged_masks: list[torch.Tensor] = []
+
+        for i in range(len(Xs)):
+            numer_embed, categ_embed = numer_jagged_embeddings[i], categ_jagged_embeddings[i]
+            numer_mask, categ_mask = numer_jagged_masks[i], categ_jagged_masks[i]
+
+            jagged_cat = torch.cat((numer_embed, categ_embed), dim=2)
+            jagged_mask = numer_mask & categ_mask
+
+            if self.masked_mean:
+                proj_jagged_mask = rearrange(jagged_mask, "b o -> b o 1 1") if not self.use_ple else None
+                jagged_cat_proj = self.projections[i](jagged_cat, proj_jagged_mask)
+            else:
+                jagged_cat_proj = self.projections[i](jagged_cat, jagged_mask if not self.use_ple else None)
+
+            jagged_inputs.append(jagged_cat_proj)
+            jagged_masks.append(jagged_mask)
+
+        x_jagged = torch.cat(jagged_inputs, dim=1)
+
+        if self.post_embeddings is not None:
+            x_jagged = self.post_embeddings(x_jagged)
+
+        x_jagged_masks = ~torch.cat(jagged_masks, dim=1)
+
+        return x_jagged, x_jagged_masks

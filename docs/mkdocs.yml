@@ -1,0 +1,122 @@
+site_name: SeeSawML Documentation
+site_url: https://seesawml.docs.cern.ch/
+site_dir: public
+site_description: Documentation for the SeeSawML package
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: start/install.md
+    - Running the Code: start/run.md
+    - lxplus HTCondor: start/lxplus.md
+  - Configuration:
+    - YAML Configuration: config/config_yaml.md
+    - Settings Overview:
+      - HDF5 Conversion: config/config_options/hdf5_conversion.md
+      - Datasets: config/config_options/dataset.md
+      - Training: config/config_options/training.md
+      - Models: config/config_options/models.md
+      - Plotting: config/config_options/plotting.md
+  - Examples:
+    - TNAnalysis Jobs: examples/tnanalysis.md
+  - API Reference:
+    - Models:
+      - Training: api/models/training.md
+      - Preprocessing: api/models/preprocessing.md
+      - Linear Layers: api/models/linear_models.md
+      - Deep Sets: api/models/deep_sets.md
+      - Transformers:
+        - Attention: api/models/transformers/attention.md
+        - Models: api/models/transformers/transformer_models.md
+    - Classification:
+      - Preparation: api/signal/preperation.md
+      - Plotting: api/signal/plotting.md
+      - Models: api/signal/models.md
+      - Training: api/signal/training.md
+    - Fake Estimation:
+      - Preparation: api/fakes/preparation.md
+      - Models: api/fakes/models.md
+      - Training: api/fakes/training.md
+      - Fake Factor Analysis: api/fakes/analysis.md
+      - Fake Toys: api/fakes/toys.md
+    - Utilities:
+      - lxplus Condor: api/utils/lxplus_condor.md
+      - Plotting: api/utils/plotting.md
+      - Helpers: api/utils/helpers.md
+      - Other: api/utils/other.md
+
+repo_url: https://gitlab.cern.ch/atlas-dch-seesaw-analyses/SeeSawML
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - toc.integrate
+    - navigation.tabs
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+    - header.autohide
+    - navigation.footer
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+      primary: indigo
+      accent: cyan
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+      primary: indigo
+      accent: cyan
+  icon:
+    repo: fontawesome/brands/gitlab
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.blocks.caption
+  - admonition
+  - pymdownx.arithmatex:
+      generic: true
+  - footnotes
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.mark
+  - attr_list
+  - md_in_html
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+plugins:
+  - search
+  - autorefs
+  - glightbox
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths:
+            - modules/SeeSawML
+          options:
+            docstring_style: "numpy"
+            docstring_section_style: table
+            merge_init_into_class: true
+            show_if_no_docstring: false
+            show_source: true
+            heading_level: 2
+            extra:
+              ignore_init_summary: false
+              trim_doctest_flags: true
