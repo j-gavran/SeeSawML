@@ -82,9 +82,9 @@ def plot_num_den_hists(
                 )
 
                 if num_den == "num":
-                    fig.suptitle("Numerator (tight)")
+                    fig.suptitle("CR (tight electron)", x=0.55, ha="center")
                 else:
-                    fig.suptitle("Denominator (loose)")
+                    fig.suptitle(r"CR$^{\mathrm{L}}$ (loose electron)", x=0.55, ha="center")
 
                 # data
                 plot_error_hist(

@@ -153,9 +153,9 @@ def switch_on_sample(name: str) -> MCSample:
                     700359,  # Sherpa 2.2.11 Zmm2jets VBF
                     700360,  # Sherpa 2.2.11 Ztt2jets VBF
                     700361,  # Sherpa 2.2.11 Znunu2jets VBF
-                    700901,  # Ztt_maxHTpTV2_Mll10_40_BFilter
-                    700902,  # Ztt_maxHTpTV2_Mll10_40_CFilterBVeto
-                    700903,  # Ztt_maxHTpTV2_Mll10_40_CVetoBVeto
+                    # 700901,  # Ztt_maxHTpTV2_Mll10_40_BFilter
+                    # 700902,  # Ztt_maxHTpTV2_Mll10_40_CFilterBVeto
+                    # 700903,  # Ztt_maxHTpTV2_Mll10_40_CVetoBVeto
                 ],
             )
         case "Z+jets_FxFx":

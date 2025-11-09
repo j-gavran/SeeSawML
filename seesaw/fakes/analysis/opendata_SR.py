@@ -296,6 +296,7 @@ def build_opendata_SR_analysis(
     analysis_config: DictConfig,
     config: DictConfig,
     dsid_store: DSIDStore | None = None,
+    postfix: str = "",
 ) -> tuple[ProcessorsCollection, ProcessorsGraph, PostprocessorsGraph]:
     metadata = OpendataMetadata(ntuples_dir)
 
@@ -378,7 +379,7 @@ def build_opendata_SR_analysis(
 
     hist_writer = NtupleHistogramMerger(
         name="histMerger_tight",
-        save_path=str(output_dir / "hists.p"),
+        save_path=str(output_dir / f"hists{postfix}.p"),
         data_hist_name="HistsProcessor_tight",
         mc_hist_name="HistsProcessor_tight",
         merge_years=False,
@@ -386,7 +387,7 @@ def build_opendata_SR_analysis(
     )
     hist_writer_fakes = NtupleHistogramMerger(
         name="histMerger_fakes",
-        save_path=str(output_dir / "hists_fakes.p"),
+        save_path=str(output_dir / f"hists_fakes{postfix}.p"),
         data_hist_name="HistsProcessor_fakes",
         mc_hist_name="HistsProcessor_fakes",
         merge_years=False,
@@ -413,6 +414,7 @@ def fill_SR_hists(
     analysis_config: DictConfig,
     config: DictConfig,
     samples: list[str],
+    postfix: str = "",
 ) -> None:
     particle_type = contents_config.particle_type
 
@@ -428,6 +430,7 @@ def fill_SR_hists(
         analysis_config=analysis_config,
         config=config,
         dsid_store=dsid_store,
+        postfix=postfix,
     )
 
     branch_filter = analysis_collection.branch_name_filter
@@ -478,9 +481,16 @@ def prepare_hists(
     return hists["data"], mc, mc_labels, mc_colors
 
 
-def plot_SR_hists(save_dir: Path, plotting_config: DictConfig, mt_cut: list[float] | None = None) -> None:
+def plot_SR_hists(
+    save_dir: Path,
+    plotting_config: DictConfig,
+    mt_cut: list[float] | None = None,
+    postfix: str = "",
+) -> None:
     data, mc, mc_labels, mc_colors = prepare_hists(
-        plotting_config, load_pickle(str(save_dir / "hists.p")), load_pickle(str(save_dir / "hists_fakes.p"))
+        plotting_config,
+        load_pickle(str(save_dir / f"hists{postfix}.p")),
+        load_pickle(str(save_dir / f"hists_fakes{postfix}.p")),
     )
 
     figs = []
@@ -516,12 +526,20 @@ def plot_SR_hists(save_dir: Path, plotting_config: DictConfig, mt_cut: list[floa
         fig.set_size_inches(7, 7)
 
         ax.legend(loc="upper right", fontsize=11, ncol=2)
+
         ax.text(0.04, 0.91, r"$\sqrt{s}=13\,\mathrm{TeV}$, $36\,\mathrm{fb}^{-1}$", transform=ax.transAxes, fontsize=14)
+
+        if "CR" in postfix:
+            ax.text(0.04, 0.91 - 0.05, "Control Region", transform=ax.transAxes, fontsize=14)
+        else:
+            ax.text(0.04, 0.91 - 0.05, "Signal Region", transform=ax.transAxes, fontsize=14)
 
         ax_ratio.set_ylim(0.8, 1.2)
 
         if ax.get_ylim()[0] < 0.0:
             ax.set_ylim(ymin=0.0)
+
+        ax.set_ylim(ymax=ax.get_ylim()[1] * 1.2)
 
         figs.append(copy.deepcopy(fig))
 
@@ -540,9 +558,31 @@ def plot_SR_hists(save_dir: Path, plotting_config: DictConfig, mt_cut: list[floa
         save_name += f"_mT_{mt_cut[0]:.0f}"
         save_name += f"-{mt_cut[1]:.0f}"
 
+    save_name += postfix
+
     with PdfPages(save_dir / f"{save_name}.pdf") as pdf:
         for fig in figs:
             pdf.savefig(fig, bbox_inches="tight")
+
+
+def get_postfix(config: DictConfig) -> str:
+    postfix = ""
+
+    is_CR = config.is_CR
+    is_ML = config.analysis_config.fakes_method == "ml"
+
+    if is_CR:
+        postfix += "_CR"
+    else:
+        postfix += "_SR"
+
+    if is_ML:
+        model_name = config.model_config.load_checkpoint.split(".")[0]
+        postfix += f"_{model_name}_ML_ff"
+    else:
+        postfix += "_binned_ff"
+
+    return postfix
 
 
 @hydra.main(
@@ -582,6 +622,8 @@ def main(config: DictConfig) -> None:
     output_dir.mkdir(exist_ok=True)
     logging.info(f"Output dir: {output_dir}")
 
+    postfix = get_postfix(config)
+
     if config.fill_histograms:
         fill_SR_hists(
             ntuples_dir=ntuples_dir,
@@ -591,9 +633,15 @@ def main(config: DictConfig) -> None:
             analysis_config=config.analysis_config,
             config=config,
             samples=config.hdf5_config.get("samples", None),
+            postfix=postfix,
         )
 
-    plot_SR_hists(output_dir, config.plotting_config, mt_cut=config.analysis_config.mT_cut)
+    plot_SR_hists(
+        output_dir,
+        config.plotting_config,
+        mt_cut=config.analysis_config.mT_cut,
+        postfix=postfix,
+    )
 
 
 if __name__ == "__main__":

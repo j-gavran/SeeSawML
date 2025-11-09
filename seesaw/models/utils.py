@@ -538,6 +538,12 @@ def load_model_from_config(
     loaded = torch.load(load_checkpoint, map_location=device, weights_only=False)
     state_dict, hyper_params = loaded["state_dict"], loaded["hyper_parameters"]
 
+    if "num_model" in hyper_params:
+        hyper_params.pop("num_model")
+
+    if "den_model" in hyper_params:
+        hyper_params.pop("den_model")
+
     loaded_features = set(hyper_params["dataset_conf"]["features"])
     config_features = set(config.dataset_config.features)
 
