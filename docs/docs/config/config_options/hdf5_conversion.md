@@ -154,6 +154,7 @@ Dataset configurations are imported from the `hdf5_config/` directory into the `
 ### Signal Specific Settings
 
 - `same_sign_leptons: bool`: Filters pairs of same sign leptons when set to `true`. Useful for analyses focusing on same-sign dilepton events.
+- `disable_other_label: bool`: If set to `true`, will ignore input files that do not contain the specified `labels`. If `false`, will include all input files and assign the `other` label to events not matching the specified `labels`. By default, it is set to `false`.
 
 !!! Example
     Same sign two lepton signal vs background dataset converter settings example:

@@ -84,6 +84,25 @@ def get_detailed_statistics(
 
 
 def main(piles_path: str, detail: bool = False, feature: str = "ptl1", num_workers: int = -1) -> None:
+    """Compute statistics of HDF5 piles in the given directory and save to a text file.
+
+    Parameters
+    ----------
+    piles_path : str
+        Path to the directory containing HDF5 piles.
+    detail : bool, optional
+        Whether to include detailed statistics for each pile, by default False. Detailed statistics include counts of
+        different labels in the specified feature.
+    feature : str, optional
+        Representative feature for detailed statistics, by default "ptl1".
+    num_workers : int, optional
+        Number of workers for data loading, by default -1 (use all available cores).
+
+    Raises
+    ------
+    ValueError
+        If the pile number cannot be extracted from the HDF5 filename.
+    """
     hdf5_files = glob.glob(os.path.join(piles_path, "*.hdf5"))
 
     if detail:
@@ -152,6 +171,7 @@ if __name__ == "__main__":
         type=str,
         required=False,
         help="Path to the directory containing HDF5 piles.",
+        default=os.environ["ANALYSIS_ML_DATA_DIR"],
     )
     parser.add_argument(
         "--detail",
@@ -172,11 +192,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if args.piles_path is not None:
-        piles_path = args.piles_path
-    else:
-        piles_path = os.environ["ANALYSIS_ML_DATA_DIR"]
-
     setup_logger()
 
-    main(piles_path, detail=args.detail, feature=args.representative_feature, num_workers=args.num_workers)
+    main(args.piles_path, detail=args.detail, feature=args.representative_feature, num_workers=args.num_workers)

@@ -268,7 +268,14 @@ def build_datasets(
     other_label = False
 
     if filter_labels is not None:
-        filter_files = [f for f in files if any(label in f for label in filter_labels)]
+        filter_files = []
+        for file in files:
+            base_name = os.path.basename(file).split(".")[0]
+            for label in filter_labels:
+                if label == base_name:
+                    filter_files.append(file)
+                    break
+
         other_label_files = set(files) - set(filter_files)
 
         if len(other_label_files) != 0:

@@ -1,20 +1,19 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from sklearn.metrics import auc, roc_curve
 import os
 
+import matplotlib.pyplot as plt
+import numpy as np
 from f9columnar.utils.helpers import handle_plot_exception
+from matplotlib.backends.backend_pdf import PdfPages
+from sklearn.metrics import auc, roc_curve
 
 from seesaw.signal.utils import multiclass_group_discriminant
-from seesaw.utils.plots_utils import atlas_label, get_color, iqr_remove_outliers, save_plot
+from seesaw.utils.plots_utils import atlas_label, iqr_remove_outliers, save_plot
 
 
 @handle_plot_exception
 def plot_multiclass_group_score(
     y_pred: np.ndarray,
     y_true: np.ndarray,
-    class_labels: dict[str, int],
     index_groups: dict[str, list[int]],
     save_path: str,
     save_postfix: str,
@@ -41,7 +40,7 @@ def plot_multiclass_group_score(
             histtype="step",
             label=f"Signal: {group_name}",
             lw=2.0,
-            color=get_color("Blue").rgb,
+            color="C0",
             density=True,
         )
         ax.hist(
@@ -50,7 +49,7 @@ def plot_multiclass_group_score(
             histtype="step",
             label="Background: rest",
             lw=2.0,
-            color=get_color("Red").rgb,
+            color="C1",
             density=True,
         )
 
@@ -74,6 +73,8 @@ def plot_multiclass_group_score(
         ax.legend(loc="upper right", fontsize=12)
         atlas_label(ax, loc=0, fontsize=14)
 
+        ax.set_xlim(-0.01, 1.01)
+
         figs.append(fig)
         plt.close(fig)
 
@@ -87,7 +88,6 @@ def plot_multiclass_group_score(
 def plot_multiclass_group_discriminant(
     y_pred: np.ndarray,
     y_true: np.ndarray,
-    class_labels: dict[str, int],
     index_groups: dict[str, list[int]],
     save_path: str,
     save_postfix: str,
@@ -132,7 +132,7 @@ def plot_multiclass_group_discriminant(
             histtype="step",
             label=f"Signal: {group_name}",
             lw=2.0,
-            color=get_color("Blue").rgb,
+            color="C0",
         )
         ax.hist(
             background_scores,
@@ -140,7 +140,7 @@ def plot_multiclass_group_discriminant(
             histtype="step",
             label="Background: rest",
             lw=2.0,
-            color=get_color("Red").rgb,
+            color="C1",
         )
 
         ax.text(
@@ -199,7 +199,7 @@ def plot_group_one_vs_rest_score(
         bins=bins,
         histtype="step",
         lw=2.0,
-        color=get_color("Blue").rgb,
+        color="C0",
         density=True,
         label=f"Signal: {group_name}",
     )
@@ -208,7 +208,7 @@ def plot_group_one_vs_rest_score(
         bins=bins,
         histtype="step",
         lw=2.0,
-        color=get_color("Red").rgb,
+        color="C1",
         density=True,
         label="Background: rest",
     )
@@ -292,10 +292,8 @@ def plot_group_one_vs_rest_discriminant(
     )
 
     fig, ax = plt.subplots(figsize=(7, 6.25))
-    ax.hist(
-        signal_scores, bins=bins, histtype="step", lw=2.0, color=get_color("Blue").rgb, label=f"Signal: {group_name}"
-    )
-    ax.hist(background_scores, bins=bins, histtype="step", lw=2.0, color=get_color("Red").rgb, label="Background: rest")
+    ax.hist(signal_scores, bins=bins, histtype="step", lw=2.0, color="C0", label=f"Signal: {group_name}")
+    ax.hist(background_scores, bins=bins, histtype="step", lw=2.0, color="C1", label="Background: rest")
 
     ax.set_xlabel(f"Discriminant for {group_name} (log p_group/p_rest)", fontsize=16)
     ax.set_ylabel("Events", fontsize=16)

@@ -10,12 +10,12 @@ from sklearn.metrics import auc, roc_curve
 
 from seesaw.signal.utils import multiclass_discriminant
 from seesaw.utils.labels import get_label
-from seesaw.utils.plots_utils import atlas_label, get_color, iqr_remove_outliers, iqr_remove_outliers_mask, save_plot
+from seesaw.utils.plots_utils import atlas_label, iqr_remove_outliers, iqr_remove_outliers_mask, save_plot
 
 
 @handle_plot_exception
 def plot_binary_roc(fpr: np.ndarray, tpr: np.ndarray, au_roc: float, save_path: str, save_postfix: str) -> None:
-    fig, ax = plt.subplots(figsize=(8, 7))
+    fig, ax = plt.subplots(figsize=(7.0, 6.25))
 
     ax.plot(fpr, tpr, color="C0", label="ROC curve", lw=2.5)
     ax.plot([0, 1], [0, 1], color="C1", linestyle="--", label="Random guess", lw=2.5)
@@ -32,7 +32,7 @@ def plot_binary_roc(fpr: np.ndarray, tpr: np.ndarray, au_roc: float, save_path: 
 
 @handle_plot_exception
 def plot_binary_bkg_rej_vs_sig_eff(fpr: np.ndarray, tpr: np.ndarray, save_path: str, save_postfix: str) -> None:
-    fig, ax = plt.subplots(figsize=(8, 7))
+    fig, ax = plt.subplots(figsize=(7.0, 6.25))
 
     ax.plot(tpr, 1 / (fpr + 1e-6), color="C0", lw=2.5)
     ax.set_xlim((0.0, 1.0))
@@ -49,7 +49,7 @@ def plot_binary_bkg_rej_vs_sig_eff(fpr: np.ndarray, tpr: np.ndarray, save_path: 
 def plot_binary_precision_recall(
     precision: np.ndarray, recall: np.ndarray, au_prc: float, save_path: str, save_postfix: str
 ) -> None:
-    fig, ax = plt.subplots(figsize=(8, 7))
+    fig, ax = plt.subplots(figsize=(7.0, 6.25))
 
     ax.plot(recall, precision, color="C0", lw=2.5)
     ax.set_xlim((0.0, 1.0))
@@ -67,7 +67,7 @@ def plot_binary_confusion_matrix(
     bcm: np.ndarray, sig_label: int, bkg_label: int, save_path: str, save_postfix: str
 ) -> None:
     for to_perc in [True, False]:
-        fig, ax = plt.subplots(figsize=(8, 7))
+        fig, ax = plt.subplots(figsize=(7.0, 6.25))
 
         if sig_label == 0:
             xticklabels = [f"Pred {sig_label}", f"Pred {bkg_label}"]
@@ -101,6 +101,9 @@ def plot_binary_confusion_matrix(
         ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
         ax.set_yticklabels(ax.get_yticklabels(), rotation=0, ha="right")
 
+        ax.minorticks_off()
+        ax.tick_params(axis="both", which="major", length=3, width=1)
+
         atlas_label(ax, loc=0, fontsize=16)
         if to_perc:
             save_plot(fig, f"{save_path}/confusion_matrix_{save_postfix}_perc.pdf", use_format="pdf")
@@ -120,7 +123,7 @@ def plot_binary_model_score(
     density: bool = False,
     mc_weights: np.ndarray | None = None,
 ) -> None:
-    fig, ax = plt.subplots(figsize=(8, 7))
+    fig, ax = plt.subplots(figsize=(7.0, 6.25))
 
     sig_weights = None if mc_weights is None else mc_weights[labels == sig_label]
     bkg_weights = None if mc_weights is None else mc_weights[labels == bkg_label]
@@ -150,7 +153,7 @@ def plot_binary_model_score(
         score_sig,
         bins=bins,
         histtype="step",
-        color=get_color("Blue").rgb,
+        color="C0",
         label="Signal",
         lw=2,
         density=density,
@@ -160,7 +163,7 @@ def plot_binary_model_score(
         score_bkg,
         bins=bins,
         histtype="step",
-        color=get_color("Red").rgb,
+        color="C1",
         label="Background",
         lw=2,
         density=density,
@@ -225,6 +228,9 @@ def plot_multiclass_confusion_matrix(cm: np.ndarray, labels: dict[str, int], sav
         plt.xlabel("Predicted")
         plt.ylabel("True")
 
+        ax.minorticks_off()
+        ax.tick_params(axis="both", which="major", length=3, width=1)
+
         atlas_label(ax, loc=0, fontsize=16)
         if to_perc:
             save_plot(fig, f"{save_path}/confusion_matrix_{save_postfix}_perc.pdf", use_format="pdf")
@@ -246,9 +252,9 @@ def plot_multiclass_model_score(
     if is_softmax:
         bins = list(np.linspace(0, 1, nbins))
 
-    fig, ax = plt.subplots(figsize=(8.25, 6.25))
+    fig, ax = plt.subplots(figsize=(7.0, 6.25))
 
-    colors = get_color_palette("cubehelix", len(labels_lst) - 1)
+    colors = get_color_palette("coolwarm", len(labels_lst) - 1)
 
     for i, label in enumerate(labels_lst):
         label = get_label(label).latex_name
@@ -264,7 +270,7 @@ def plot_multiclass_model_score(
             bins=bins,
             label=label,
             color="r" if i == 0 else colors[i - 1],
-            lw=1.25,
+            lw=2,
             histtype="step",
             zorder=len(labels_lst) - i,
         )
@@ -273,10 +279,11 @@ def plot_multiclass_model_score(
     ax.set_ylabel("Events", fontsize=16)
     ax.set_yscale("log")
 
-    ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0, fontsize=12)
+    ax.legend(fontsize=12)
 
     atlas_label(ax, loc=0, fontsize=14)
     if is_softmax:
+        ax.set_xlim(-0.01, 1.01)
         save_plot(fig, f"{save_path}/multiclass_score_{save_postfix}.pdf", use_format="pdf")
     else:
         save_plot(fig, f"{save_path}/multiclass_logits_{save_postfix}.pdf", use_format="pdf")
@@ -316,7 +323,7 @@ def plot_multiclass_tsne_pca(
         X_embedded = tsne.fit_transform(X)
 
     unique_combos = sorted(set(label_combos))
-    palette = get_color_palette("cubehelix", len(unique_combos))
+    palette = get_color_palette("coolwarm", len(unique_combos))
     combo_to_color = {combo: palette[i] for i, combo in enumerate(unique_combos)}
 
     markers = {}
@@ -351,7 +358,7 @@ def plot_multiclass_tsne_pca(
     ax.set_xlabel("Component 1", fontsize=18)
     ax.set_ylabel("Component 2", fontsize=18)
 
-    ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0, title="True / Predicted", fontsize=16)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0, title="True / Predicted", fontsize=12)
 
     atlas_label(ax, loc=0, fontsize=16)
 
@@ -378,9 +385,9 @@ def plot_multiclass_one_vs_rest_roc(
 
     inverse_class_labels = {v: k for k, v in class_labels.items()}
 
-    colors = get_color_palette("cubehelix", num_classes - 1)
+    colors = get_color_palette("coolwarm", num_classes - 1)
 
-    fig, ax = plt.subplots(figsize=(7, 6.25))
+    fig, ax = plt.subplots(figsize=(7.0, 6.25))
 
     for i in range(num_classes):
         label = get_label(inverse_class_labels[i]).latex_name
@@ -393,10 +400,10 @@ def plot_multiclass_one_vs_rest_roc(
         ax.plot(fpr[i], tpr[i], label=f"{label} (AUC = {roc_auc[i]:.4e})", c=c, ls=ls, zorder=num_classes - i)
 
     ax.plot([0, 1], [0, 1], "k--")
-    ax.set_title("ROC Curve (One-vs-Rest)", loc="right")
+    ax.set_title("ROC Curve (One-vs-Rest)", loc="right", fontsize=14)
     ax.set_xlabel("False Positive Rate")
     ax.set_ylabel("True Positive Rate")
-    ax.legend()
+    ax.legend(fontsize=12)
 
     atlas_label(ax, loc=0, fontsize=14)
 
@@ -410,9 +417,9 @@ def plot_multiclass_discriminant(
     ds = multiclass_discriminant(y_pred)
 
     labels = list(class_labels.keys())
-    colors = get_color_palette("cubehelix", len(labels) - 1)
+    colors = get_color_palette("coolwarm", len(labels) - 1)
 
-    fig, ax = plt.subplots(figsize=(8.25, 6.25))
+    fig, ax = plt.subplots(figsize=(7.0, 6.25))
 
     for i, label in enumerate(labels):
         label = get_label(label).latex_name
@@ -430,7 +437,7 @@ def plot_multiclass_discriminant(
             bins=bins,
             histtype="step",
             label=label,
-            lw=1.25,
+            lw=2,
             alpha=0.7,
             color=c,
             zorder=len(labels) - i,
@@ -440,7 +447,7 @@ def plot_multiclass_discriminant(
     ax.set_ylabel("Events", fontsize=16)
     ax.set_yscale("log")
 
-    ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0, fontsize=12)
+    ax.legend(fontsize=12)
     atlas_label(ax, loc=0, fontsize=14)
     save_plot(fig, f"{save_path}/multiclass_log_discriminant_{save_postfix}.pdf", use_format="pdf")
 
@@ -464,7 +471,6 @@ def plot_multiclass_one_vs_rest_score(
     figs = []
     for class_idx in range(len(class_labels)):
         signal_label = plot_labels[class_idx]
-        background_labels = set(plot_labels) - {signal_label}
 
         class_scores = y_pred[:, class_idx]
 
@@ -474,7 +480,7 @@ def plot_multiclass_one_vs_rest_score(
         background_mask = y_true_class_indices != class_idx
         background_scores = class_scores[background_mask]
 
-        fig, ax = plt.subplots(figsize=(7, 6.25))
+        fig, ax = plt.subplots(figsize=(7.0, 6.25))
 
         ax.hist(
             signal_scores,
@@ -482,16 +488,16 @@ def plot_multiclass_one_vs_rest_score(
             histtype="step",
             label=f"Signal: {signal_label} (One-vs-Rest)",
             lw=2.0,
-            color=get_color("Blue").rgb,
+            color="C0",
             density=True,
         )
         ax.hist(
             background_scores,
             bins=bins,
             histtype="step",
-            label=f"Background: {', '.join(background_labels)}",
+            label="Background: rest",
             lw=2.0,
-            color=get_color("Red").rgb,
+            color="C1",
             density=True,
         )
 
@@ -510,6 +516,8 @@ def plot_multiclass_one_vs_rest_score(
         ax.set_yscale("log")
         ax.legend(loc="upper right", fontsize=12)
         atlas_label(ax, loc=0, fontsize=14)
+
+        ax.set_xlim(-0.01, 1.01)
 
         figs.append(fig)
         plt.close(fig)
@@ -538,7 +546,6 @@ def plot_multiclass_discriminant_one_vs_rest(
     figs = []
     for i, label in enumerate(labels):
         signal_label = label
-        background_labels = set(labels) - {signal_label}
 
         class_scores = ds[i]
 
@@ -548,7 +555,7 @@ def plot_multiclass_discriminant_one_vs_rest(
         background_mask = y_true_class_indices != i
         background_scores = class_scores[background_mask]
 
-        fig, ax = plt.subplots(figsize=(7, 6.25))
+        fig, ax = plt.subplots(figsize=(7.0, 6.25))
 
         signal_scores = iqr_remove_outliers(signal_scores)
         background_scores = iqr_remove_outliers(background_scores)
@@ -568,15 +575,15 @@ def plot_multiclass_discriminant_one_vs_rest(
             histtype="step",
             label=f"Signal: {signal_label} (One-vs-Rest)",
             lw=2.0,
-            color=get_color("Blue").rgb,
+            color="C0",
         )
         ax.hist(
             background_scores,
             bins=bins,
             histtype="step",
-            label=f"Background: {', '.join(background_labels)}",
+            label="Background: rest",
             lw=2.0,
-            color=get_color("Red").rgb,
+            color="C1",
         )
 
         ax.text(

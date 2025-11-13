@@ -42,6 +42,9 @@ Configuration for distribution plots of signal and background samples. Available
 !!! Tip
     Run `plot_signal` command to generate signal vs background plots after training. Class labels can be set in the `dataset_config.classes`.
 
+!!! Note
+    For multi-class classification, TSNE and PCA plots can be enabled with `plotting_config.disable_projections: true`. This will generate 2D projections of the feature space using TSNE and PCA algorithms during training at the end of training epochs.
+
 ## Fakes Plots
 
 ### Closure Plot

@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+import mplhep as hep
 import numpy as np
 import torch
 from f9columnar.ml.hdf5_dataloader import FullWeightedBatchType, WeightedBatchType
@@ -158,6 +159,8 @@ class SigBkgClassifierTracker(Tracker):
         if not self.validate_plot():
             self.reset()
             return False
+
+        hep.style.use(hep.style.ATLAS)
 
         accumulated_true = torch.cat(self.accumulated_true)
         accumulated_pred = torch.cat(self.accumulated_pred)
@@ -345,13 +348,16 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         if not self.validate_plot():
             return False
 
+        hep.style.use(hep.style.ATLAS)
+
         accumulated_true = torch.cat(self.accumulated_true)
         accumulated_pred = torch.cat(self.accumulated_pred)
         np_accumulated_logits = torch.cat(self.accumulated_logits).numpy()
 
-        tsne_pca_X = torch.cat(self.tsne_pca_X).numpy()
-        tsne_pca_y_true = torch.cat(self.tsne_pca_y_true).numpy()
-        tsne_pca_y_pred = torch.cat(self.tsne_pca_y_pred).numpy()
+        if not self.plotting_conf.get("disable_projections", True):
+            tsne_pca_X = torch.cat(self.tsne_pca_X).numpy()
+            tsne_pca_y_true = torch.cat(self.tsne_pca_y_true).numpy()
+            tsne_pca_y_pred = torch.cat(self.tsne_pca_y_pred).numpy()
 
         cm = self.calculate_cm(accumulated_true, accumulated_pred)
 
@@ -383,16 +389,17 @@ class SigBkgMulticlassClassifierTracker(Tracker):
             save_postfix=save_postfix,
             is_softmax=False,
         )
-        for pca_tsne in [True, False]:
-            plot_multiclass_tsne_pca(
-                tsne_pca_X,
-                tsne_pca_y_pred,
-                tsne_pca_y_true,
-                self.class_labels,
-                save_path=self.plotting_dirs["scores"],
-                save_postfix=save_postfix,
-                use_pca=pca_tsne,
-            )
+        if not self.plotting_conf.get("disable_projections", True):
+            for pca_tsne in [True, False]:
+                plot_multiclass_tsne_pca(
+                    tsne_pca_X,
+                    tsne_pca_y_pred,
+                    tsne_pca_y_true,
+                    self.class_labels,
+                    save_path=self.plotting_dirs["scores"],
+                    save_postfix=save_postfix,
+                    use_pca=pca_tsne,
+                )
         # Always produce per-class ROC curves
         plot_multiclass_one_vs_rest_roc(
             np_accumulated_pred,
@@ -443,7 +450,6 @@ class SigBkgMulticlassClassifierTracker(Tracker):
                 plot_multiclass_group_score(
                     np_accumulated_pred,
                     np_accumulated_true,
-                    self.class_labels,
                     group_indices,
                     save_path=self.plotting_dirs["custom_scores"],
                     save_postfix=save_postfix,
@@ -451,7 +457,6 @@ class SigBkgMulticlassClassifierTracker(Tracker):
                 plot_multiclass_group_discriminant(
                     np_accumulated_pred,
                     np_accumulated_true,
-                    self.class_labels,
                     group_indices,
                     save_path=self.plotting_dirs["custom_scores"],
                     save_postfix=save_postfix,
@@ -625,6 +630,8 @@ class JaggedSigBkgClassifierTracker(Tracker):
         if not self.validate_plot():
             self.reset()
             return False
+
+        hep.style.use(hep.style.ATLAS)
 
         accumulated_true = torch.cat(self.accumulated_true)
         accumulated_pred = torch.cat(self.accumulated_pred)
@@ -823,13 +830,20 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
         if self.class_labels is None:
             return False
 
+        hep.style.use(hep.style.ATLAS)
+
         accumulated_true = torch.cat(self.accumulated_true)
         accumulated_pred = torch.cat(self.accumulated_pred)
         np_accumulated_logits = torch.cat(self.accumulated_logits).numpy()
 
-        tsne_pca_X = torch.cat(self.tsne_pca_X).numpy() if len(self.tsne_pca_X) != 0 else np.zeros((0,))
-        tsne_pca_y_true = torch.cat(self.tsne_pca_y_true).numpy() if len(self.tsne_pca_y_true) != 0 else np.zeros((0,))
-        tsne_pca_y_pred = torch.cat(self.tsne_pca_y_pred).numpy() if len(self.tsne_pca_y_pred) != 0 else np.zeros((0,))
+        if not self.plotting_conf.get("disable_projections", True):
+            tsne_pca_X = torch.cat(self.tsne_pca_X).numpy() if len(self.tsne_pca_X) != 0 else np.zeros((0,))
+            tsne_pca_y_true = (
+                torch.cat(self.tsne_pca_y_true).numpy() if len(self.tsne_pca_y_true) != 0 else np.zeros((0,))
+            )
+            tsne_pca_y_pred = (
+                torch.cat(self.tsne_pca_y_pred).numpy() if len(self.tsne_pca_y_pred) != 0 else np.zeros((0,))
+            )
 
         cm = self.calculate_cm(accumulated_true, accumulated_pred)
 
@@ -861,16 +875,17 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
             save_postfix=save_postfix,
             is_softmax=False,
         )
-        for pca_tsne in [True, False]:
-            plot_multiclass_tsne_pca(
-                tsne_pca_X,
-                tsne_pca_y_pred,
-                tsne_pca_y_true,
-                self.class_labels,
-                save_path=self.plotting_dirs["scores"],
-                save_postfix=save_postfix,
-                use_pca=pca_tsne,
-            )
+        if not self.plotting_conf.get("disable_projections", True):
+            for pca_tsne in [True, False]:
+                plot_multiclass_tsne_pca(
+                    tsne_pca_X,
+                    tsne_pca_y_pred,
+                    tsne_pca_y_true,
+                    self.class_labels,
+                    save_path=self.plotting_dirs["scores"],
+                    save_postfix=save_postfix,
+                    use_pca=pca_tsne,
+                )
         # Always produce per-class ROC curves
         plot_multiclass_one_vs_rest_roc(
             np_accumulated_pred,
@@ -922,7 +937,6 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
                 plot_multiclass_group_score(
                     np_accumulated_pred,
                     np_accumulated_true,
-                    self.class_labels,
                     group_indices,
                     save_path=self.plotting_dirs["custom_scores"],
                     save_postfix=save_postfix,
@@ -930,7 +944,6 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
                 plot_multiclass_group_discriminant(
                     np_accumulated_pred,
                     np_accumulated_true,
-                    self.class_labels,
                     group_indices,
                     save_path=self.plotting_dirs["custom_scores"],
                     save_postfix=save_postfix,
