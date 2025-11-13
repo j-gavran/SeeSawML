@@ -240,6 +240,7 @@ class SigBkgEventsNNClassifier(BaseSigBkgNNClassifier, BaseEventsLightningModule
             self,
             dataset_conf,
             model_conf,
+            run_name=run_name,
             tracker=tracker,
         )
         BaseSigBkgNNClassifier.__init__(
@@ -298,6 +299,7 @@ class SigBkgFullNNClassifier(BaseSigBkgNNClassifier, BaseFullLightningModule):
             self,
             dataset_conf,
             model_conf,
+            run_name=run_name,
             tracker=tracker,
         )
         BaseSigBkgNNClassifier.__init__(

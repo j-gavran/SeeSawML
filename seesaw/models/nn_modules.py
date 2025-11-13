@@ -22,6 +22,7 @@ class BaseLightningModule(ABC, L.LightningModule):
         self,
         dataset_conf: DictConfig,
         model_conf: DictConfig,
+        run_name: str | None = None,
         tracker: Tracker | None = None,
     ) -> None:
         """Abstract base class for pytorch-lightning training.
@@ -39,6 +40,7 @@ class BaseLightningModule(ABC, L.LightningModule):
         super().__init__()
         self.dataset_conf, self.model_conf = dataset_conf, model_conf
         self.training_conf = self.model_conf.training_config
+        self.run_name = run_name
 
         self._log_train_memory = self.training_conf.get("log_train_memory", False)
 
@@ -159,9 +161,10 @@ class BaseEventsLightningModule(BaseLightningModule):
         self,
         dataset_conf: DictConfig,
         model_conf: DictConfig,
+        run_name: str | None = None,
         tracker: Tracker | None = None,
     ) -> None:
-        super().__init__(dataset_conf, model_conf, tracker)
+        super().__init__(dataset_conf, model_conf, run_name, tracker)
         self.save_hyperparameters(ignore=["tracker", "loss_func", "binary_acc", "multi_acc", "model"])
 
     @abstractmethod
@@ -215,9 +218,10 @@ class BaseFullLightningModule(BaseLightningModule):
         self,
         dataset_conf: DictConfig,
         model_conf: DictConfig,
+        run_name: str | None = None,
         tracker: Tracker | None = None,
     ) -> None:
-        super().__init__(dataset_conf, model_conf, tracker)
+        super().__init__(dataset_conf, model_conf, run_name, tracker)
         self.save_hyperparameters(ignore=["tracker", "loss_func", "binary_acc", "multi_acc", "model"])
 
     @abstractmethod
@@ -273,9 +277,10 @@ class BaseBatchCompletedLightningModule(BaseEventsLightningModule):
         self,
         dataset_conf: DictConfig,
         model_conf: DictConfig,
+        run_name: str | None = None,
         tracker: Tracker | None = None,
     ) -> None:
-        super().__init__(dataset_conf, model_conf, tracker)
+        super().__init__(dataset_conf, model_conf, run_name, tracker)
 
     @abstractmethod
     def get_loss(self, batch: WeightedBatchType, stage: str | None = None) -> Any:

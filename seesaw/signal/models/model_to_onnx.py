@@ -51,19 +51,14 @@ def convert_sig_bkg_classifier(
             model_config["architecture_config"] = {}
         model_config["architecture_config"]["compile"] = False
 
-    lightning_module, checkpoint_path = load_sig_bkg_model(
-        model_config,
-        model_conf=model_config,
-        dataset_conf=config.dataset_config,
-        strict=False,
-    )
+    lightning_module, checkpoint_path = load_sig_bkg_model(config, events_only=True)
     torch_model = lightning_module.model.eval().cpu()
     # If the model is wrapped by torch.compile/dynamo, unwrap to the original nn.Module for export
     # Prefer attribute `_orig_mod` that is set by dynamo wrappers; otherwise, keep as-is.
     if hasattr(torch_model, "_orig_mod") and torch_model._orig_mod is not None:
         orig = torch_model._orig_mod
         logging.info("Detected torch.compile/dynamo wrapper; unwrapping _orig_mod for ONNX export.")
-        torch_model = orig.eval().cpu()
+        torch_model = orig.eval().cpu()  # type: ignore[union-attr]
     else:
         logging.info("No _orig_mod found; exporting the model as-is.")
 
@@ -79,7 +74,7 @@ def convert_sig_bkg_classifier(
             groups_cfg = OmegaConf.to_container(ds_conf.scores, resolve=True)
 
         if groups_cfg:
-            prepared_extra_metadata["custom_groups"] = {str(k): list(v) for k, v in dict(groups_cfg).items()}
+            prepared_extra_metadata["custom_groups"] = {str(k): list(v) for k, v in dict(groups_cfg).items()}  # type: ignore[arg-type]
     except Exception:
         logging.warning("Failed to attach custom_groups from dataset_config.", exc_info=True)
 

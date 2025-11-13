@@ -14,6 +14,7 @@ from omegaconf import DictConfig, ListConfig, open_dict
 
 from seesaw.models.deep_sets import FlatDeepSets, JaggedDeepsets
 from seesaw.models.mlp import MLP
+from seesaw.models.nn_modules import BaseLightningModule
 from seesaw.models.res_net import ResNet
 from seesaw.models.transformers.event_transformer import EventTransformer
 from seesaw.models.transformers.jagged_transformer import JaggedTransformer
@@ -487,10 +488,12 @@ def load_reports(checkpoint_path: str, add_selection: bool = False) -> dict[str,
 
 def load_model_from_config(
     config: DictConfig,
-    model_class: Type[torch.nn.Module],
+    model_class: Type[BaseLightningModule],
     model_config: DictConfig | None = None,
     checkpoint_path: str | None = None,
-) -> tuple[torch.nn.Module, str]:
+    disable_compile: bool = False,
+    **kwargs: Any,
+) -> tuple[BaseLightningModule, str]:
     """Load a model from the configuration given load_checkpoint and model_save_path.
 
     Parameters
@@ -499,10 +502,14 @@ def load_model_from_config(
         Hydra configuration object containing model and dataset configurations.
     model_config : DictConfig | None, optional
         Model configuration. If None, it will be taken from config.model_config.
-    model_class : Type[torch.nn.Module]
+    model_class : Type[BaseLightningModule]
         The class of the model to be loaded.
     checkpoint_path : str | None, optional
         Direct path to the checkpoint file. If provided, this will override the load_checkpoint in the config.
+    disable_compile : bool, optional
+        If True, disables model compilation even if it was enabled in the architecture_config, by default False.
+    **kwargs : Any
+        Additional keyword arguments to pass to torch.load.
 
     Note
     ----
@@ -510,8 +517,8 @@ def load_model_from_config(
 
     Returns
     -------
-    tuple[torch.nn.Module, str]
-        The loaded model and the path to the checkpoint.
+    tuple[BaseLightningModule, str]
+        The loaded lightning model and the path to the checkpoint.
 
     """
     if model_config is None:
@@ -535,7 +542,7 @@ def load_model_from_config(
     else:
         device = torch.device(accelerator)
 
-    loaded = torch.load(load_checkpoint, map_location=device, weights_only=False)
+    loaded = torch.load(load_checkpoint, map_location=device, weights_only=False, **kwargs)
     state_dict, hyper_params = loaded["state_dict"], loaded["hyper_parameters"]
 
     if "num_model" in hyper_params:
@@ -576,7 +583,7 @@ def load_model_from_config(
     model = model_class(**hyper_params).to(device)
     model.load_state_dict(state_dict)
 
-    if compile_model:
+    if compile_model and not disable_compile:
         compile_kwargs = model_conf.architecture_config.get("compile_kwargs", {})
         logging.info(f"Compiling the model with torch.compile and args: {compile_kwargs}")
         model.compile(**compile_kwargs)

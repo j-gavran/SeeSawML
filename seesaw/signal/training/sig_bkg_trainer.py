@@ -12,6 +12,7 @@ from omegaconf import DictConfig, open_dict
 
 from seesaw.models.nn_modules import BaseLightningModule
 from seesaw.models.tracker import Tracker
+from seesaw.models.utils import load_model_from_config
 from seesaw.signal.models.sig_bkg_classifiers import SigBkgEventsNNClassifier, SigBkgFullNNClassifier
 from seesaw.signal.training.trackers import (
     JaggedSigBkgClassifierTracker,
@@ -118,14 +119,15 @@ def build_sig_bkg_model(
 
 
 def load_sig_bkg_model(
-    model_config: DictConfig, events_only: bool = True, **kwargs: Any
+    config: DictConfig,
+    events_only: bool = True,
+    checkpoint_path: str | None = None,
+    **kwargs: Any,
 ) -> tuple[BaseLightningModule, str]:
-    load_checkpoint = os.path.join(model_config.training_config.model_save_path, model_config.load_checkpoint)
-
     if events_only:
-        return SigBkgEventsNNClassifier.load_from_checkpoint(load_checkpoint, **kwargs), load_checkpoint
+        return load_model_from_config(config, SigBkgEventsNNClassifier, checkpoint_path=checkpoint_path, **kwargs)
     else:
-        return SigBkgFullNNClassifier.load_from_checkpoint(load_checkpoint, **kwargs), load_checkpoint
+        return load_model_from_config(config, SigBkgFullNNClassifier, checkpoint_path=checkpoint_path, **kwargs)
 
 
 def verify_loss(is_multiclass: bool, model_conf: DictConfig) -> None:
@@ -195,7 +197,7 @@ def sig_bkg_trainer(config: DictConfig) -> None:
 
     if load_checkpoint is not None:
         try:
-            model, _ = load_sig_bkg_model(model_config, events_only=events_only)
+            model, _ = load_sig_bkg_model(config, events_only=events_only)
             logging.info("Sig/bkg model is ready to be used.")
         except Exception as e:
             logging.error(f"Error loading model: {e}")
@@ -297,15 +299,11 @@ def sig_bkg_trainer(config: DictConfig) -> None:
     if train_stage:
         trainer.fit(model, dm)
 
-        best_model_path = trainer.checkpoint_callback.best_model_path  # type: ignore
+        best_model_path = trainer.checkpoint_callback.best_model_path  # type: ignore[union-attr]
         logging.info(f"Best model saved at: {best_model_path}")
 
-        with open_dict(model_config):
-            model_config.training_config.model_save_path = os.path.dirname(best_model_path)
-            model_config.load_checkpoint = os.path.basename(best_model_path)
-
         logging.info("[green]Loading best model for testing.")
-        model, _ = load_sig_bkg_model(model_config, events_only=events_only)
+        model, _ = load_sig_bkg_model(config, events_only=events_only, checkpoint_path=best_model_path)
 
     if dataset_config.stage_split_piles.get("test", 0) > 0:
         logging.info("[bold green]Testing trained model.")

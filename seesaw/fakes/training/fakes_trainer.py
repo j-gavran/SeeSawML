@@ -17,6 +17,7 @@ from seesaw.fakes.models.dre_classifiers import NumDenClassifier, RatioClassifie
 from seesaw.fakes.models.pt_sliced_model import get_numer_scaler, get_pt_idx, load_pt_sliced_model, scale_pt_slice
 from seesaw.fakes.training.trackers import NumDenTracker, RatioTracker
 from seesaw.fakes.utils import handle_fakes_dataset
+from seesaw.models.nn_modules import BaseLightningModule
 from seesaw.models.tracker import Tracker
 from seesaw.models.utils import load_model_from_config
 from seesaw.utils.helpers import setup_analysis_dirs
@@ -139,7 +140,7 @@ def build_num_den_model(
     )
 
 
-def load_num_den_model(conf: DictConfig) -> tuple[torch.nn.Module, str]:
+def load_num_den_model(conf: DictConfig) -> tuple[BaseLightningModule, str]:
     if conf.model_config.get("load_checkpoint", None) is not None:
         return load_model_from_config(conf, NumDenClassifier)
     else:
@@ -168,7 +169,7 @@ def build_ratio_model(
     )
 
 
-def load_ratio_model(conf: DictConfig) -> tuple[torch.nn.Module, str]:
+def load_ratio_model(conf: DictConfig) -> tuple[BaseLightningModule | torch.nn.Module, str]:
     if conf.model_config.get("load_checkpoint", None) is not None:
         return load_model_from_config(conf, RatioClassifier)
     elif conf.model_config.get("pt_sliced_model", None) is not None:

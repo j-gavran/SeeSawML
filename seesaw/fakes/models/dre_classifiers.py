@@ -22,7 +22,7 @@ class FakesNNClassifier(BaseBatchCompletedLightningModule):
         run_name: str | None = None,
         tracker: Tracker | None = None,
     ) -> None:
-        super().__init__(dataset_conf, model_conf, tracker)
+        super().__init__(dataset_conf, model_conf, run_name, tracker)
 
         self.model_conf = model_conf
         model, self.model_name, selection = build_network(dataset_conf, model_conf, run_name)

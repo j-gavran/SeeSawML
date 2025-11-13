@@ -747,7 +747,7 @@ def main(config: DictConfig):
     if signal_plot_conf.closure:
         logging.info("[green]Performing classification closure test.")
         device = "cuda" if config.experiment_config.accelerator == "gpu" else "cpu"
-        model, load_checkpoint = load_sig_bkg_model(config.model_config, map_location=device)
+        model, load_checkpoint = load_sig_bkg_model(config, events_only=True, map_location=device)
         logging.info(f"Loaded model {os.path.basename(load_checkpoint)} on {device}.")
     else:
         model = None
