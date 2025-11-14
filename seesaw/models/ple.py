@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 from f9columnar.utils.helpers import load_pickle
 
+from seesaw.models.activations import get_activation
+
 
 class QuantilePiecewiseEncodingLayer(nn.Module):
     def __init__(
@@ -12,6 +14,7 @@ class QuantilePiecewiseEncodingLayer(nn.Module):
         ple_file_hash_str: str,
         feature_idx: int,
         embedding_dim: int | None = None,
+        act: str | None = None,
         bias: bool = True,
         dataset_key: str | None = None,
     ) -> None:
@@ -25,6 +28,8 @@ class QuantilePiecewiseEncodingLayer(nn.Module):
             Index of the feature to apply the piecewise encoding to.
         embedding_dim : int | None, optional
             If specified, the output will be projected to this dimension, by default None.
+        act : str | None, optional
+            Activation function to apply after the projection layer, by default None.
         bias : bool, optional
             If True, the projection layer will have a bias term, by default True.
         dataset_key : str | None, optional
@@ -44,9 +49,12 @@ class QuantilePiecewiseEncodingLayer(nn.Module):
         )
         self.bins = n_bins_lst[feature_idx]
 
-        self.projection: nn.Linear | None
+        self.projection: nn.Module | None
+
         if embedding_dim is not None:
-            self.projection = nn.Linear(self.bins, embedding_dim, bias=bias)
+            projection: list[nn.Module] = [nn.Linear(self.bins, embedding_dim, bias=bias)]
+            projection.append(get_activation(act))
+            self.projection = nn.Sequential(*projection)
         else:
             self.projection = None
 
@@ -108,7 +116,14 @@ class QuantilePiecewiseEncodingLayer(nn.Module):
 
 
 class LearnablePiecewiseEncodingLayer(nn.Module):
-    def __init__(self, bins: int, embedding_dim: int | None = None, learn_bins: bool = True, bias: bool = True) -> None:
+    def __init__(
+        self,
+        bins: int,
+        embedding_dim: int | None = None,
+        act: str | None = None,
+        learn_bins: bool = True,
+        bias: bool = True,
+    ) -> None:
         """Learnable piecewise linear encoding layer.
 
         Source: https://github.com/OpenTabular/DeepTabular/blob/master/mambular/arch_utils/learnable_ple.py
@@ -120,6 +135,8 @@ class LearnablePiecewiseEncodingLayer(nn.Module):
             Number of bins for the periodic encoding.
         embedding_dim : int | None, optional
             If specified, the output will be projected to this dimension, by default None.
+        act : str | None, optional
+            Activation function to apply after the projection layer, by default None.
         learn_bins : bool, optional
             If True, the bin boundaries are learnable parameters, by default True.
         bias : bool, optional
@@ -144,9 +161,11 @@ class LearnablePiecewiseEncodingLayer(nn.Module):
             fixed_bins = torch.linspace(0, 1, bins + 1)
             self.register_buffer("bin_boundaries", fixed_bins)
 
-        self.projection: nn.Linear | None
+        self.projection: nn.Module | None
         if embedding_dim is not None:
-            self.projection = nn.Linear(self.bins, embedding_dim, bias=bias)
+            projection: list[nn.Module] = [nn.Linear(self.bins, embedding_dim, bias=bias)]
+            projection.append(get_activation(act))
+            self.projection = nn.Sequential(*projection)
         else:
             self.projection = None
 

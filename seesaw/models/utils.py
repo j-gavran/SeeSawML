@@ -89,20 +89,33 @@ def _build_events_network(
     else:
         embedding_config = {}
 
-    if embedding_config.get("use_ple", False):
+    if "ple" in embedding_config:
         n_bins = dataset_conf.get("ple_bins", None)
 
         if n_bins is None:
             raise ValueError("ple_bins must be specified in dataset_config for using PLE!")
 
-        ple_config = {}
+        if isinstance(embedding_config["ple"], DictConfig):
+            embeddings_ple_config = dict(embedding_config["ple"])
+            use_ple = True
+        elif embedding_config["ple"] is True:
+            embeddings_ple_config = {}
+            use_ple = True
+        else:
+            use_ple = False
 
-        ple_config["n_bins"] = n_bins
-        ple_config["learn_bins"] = embedding_config.get("learn_ple_bins", False)
-        ple_config["uniform_bins"] = embedding_config.get("uniform_ple_bins", False)
-        ple_config["ple_file_hash_str"] = str(dataset_conf.files) + str(sorted(dataset_conf.features)) + str(n_bins)
+        if use_ple:
+            ple_config = {}
 
-        embedding_config.pop("use_ple")
+            ple_config["n_bins"] = n_bins
+            ple_config["learn_bins"] = embeddings_ple_config.get("learn_bins", False)
+            ple_config["uniform_bins"] = embeddings_ple_config.get("uniform_bins", False)
+            ple_config["act"] = embeddings_ple_config.get("act", None)
+            ple_config["dropout"] = embeddings_ple_config.get("dropout", 0.0)
+            ple_config["layernorm"] = embeddings_ple_config.get("layernorm", False)
+            ple_config["ple_file_hash_str"] = str(dataset_conf.files) + str(sorted(dataset_conf.features)) + str(n_bins)
+        else:
+            ple_config = None
     else:
         ple_config = None
 
@@ -304,20 +317,33 @@ def _build_jagged_network(
     else:
         embedding_config = {}
 
-    if embedding_config.get("use_ple", False):
+    if "ple" in embedding_config:
         n_bins = dataset_conf.get("ple_bins", None)
 
         if n_bins is None:
             raise ValueError("ple_bins must be specified in dataset_config for using PLE!")
 
-        ple_config = {}
+        if isinstance(embedding_config["ple"], DictConfig):
+            embeddings_ple_config = dict(embedding_config["ple"])
+            use_ple = True
+        elif embedding_config["ple"] is True:
+            embeddings_ple_config = {}
+            use_ple = True
+        else:
+            use_ple = False
 
-        ple_config["n_bins"] = n_bins
-        ple_config["learn_bins"] = embedding_config.get("learn_ple_bins", False)
-        ple_config["uniform_bins"] = embedding_config.get("uniform_ple_bins", False)
-        ple_config["ple_file_hash_str"] = str(dataset_conf.files) + str(sorted(dataset_conf.features)) + str(n_bins)
+        if use_ple:
+            ple_config = {}
 
-        embedding_config.pop("use_ple")
+            ple_config["n_bins"] = n_bins
+            ple_config["learn_bins"] = embeddings_ple_config.get("learn_bins", False)
+            ple_config["uniform_bins"] = embeddings_ple_config.get("uniform_bins", False)
+            ple_config["act"] = embeddings_ple_config.get("act", None)
+            ple_config["dropout"] = embeddings_ple_config.get("dropout", 0.0)
+            ple_config["layernorm"] = embeddings_ple_config.get("layernorm", False)
+            ple_config["ple_file_hash_str"] = str(dataset_conf.files) + str(sorted(dataset_conf.features)) + str(n_bins)
+        else:
+            ple_config = None
     else:
         ple_config = None
 

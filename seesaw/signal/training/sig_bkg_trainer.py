@@ -303,8 +303,8 @@ def sig_bkg_trainer(config: DictConfig) -> None:
         best_model_path = trainer.checkpoint_callback.best_model_path  # type: ignore[union-attr]
         logging.info(f"Best model saved at: {best_model_path}")
 
-        logging.info("[green]Loading best model for testing.")
-        model, _ = load_sig_bkg_model(config, events_only=events_only, checkpoint_path=best_model_path)
+        logging.info("[green]Done training!")
+        return None
 
     if dataset_config.stage_split_piles.get("test", 0) > 0:
         logging.info("[bold green]Testing trained model.")
@@ -313,7 +313,7 @@ def sig_bkg_trainer(config: DictConfig) -> None:
     else:
         logging.info("No test data available. Skipping testing.")
 
-    logging.info("[green]Done!")
+    logging.info("[green]Done testing!")
 
 
 @hydra.main(

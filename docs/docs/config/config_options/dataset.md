@@ -16,12 +16,12 @@ Training dataset configuration options for saved HDF5 datasets are specified in 
     - `imbalanced_sampler: str | None`: Type of imbalanced sampler to use (`RandomUnderSampler` or `RandomOverSampler`). If set to `null`, no imbalanced sampling is applied. Only supported for binary classification tasks.
     - `drop_last: bool`: Whether to drop the last incomplete batch if the dataset size is not divisible by the batch size.
 - `features: list[str]`: List of feature names to be used as input for the model. Both flat and jagged features can be included.
-- `feature_scaling: dict[str, str]`: Dictionary specifying the scaling method for each feature.
-    - `scaler_type: str`: Type of scaler to use.
-    - `partial_fit: bool`: Whether to use partial fitting for the scaler (if supported).
+- `feature_scaling: dict[str, Any | dict[str, Any]]`: Dictionary specifying the scaling method for each feature.
+    - `numer_scaler_type: str | None`: Type of scaler to use for numerical features. Supported scalers are listed below. If set to `null`, no numerical scaling is applied.
+    - `categorical_scaler_type: str | None`: Type of scaler to use for categorical features. Only `label-encoder` is supported. If set to `null`, no categorical scaling is applied.
     - `n_max: int | None`: Maximum number of samples to use for fitting the scaler. If set to `null`, all samples are used.
     - `save_path: str`: Path where to save the fitted scaler.
-    - `any additional scaler-specific parameters`: Additional parameters specific to the chosen scaler type.
+    - `scaler_params: dict[str, Any]`: Additional parameters to be passed to the scaler during initialization. `partial_fit` is set in this field for supported scalers.
 
 !!! Info
     Features list can contain *special* features that are used for specific purposes. These include all features ending with `_type`, `weights` feature, and any feature that includes `mlmass` in its name.
@@ -44,6 +44,9 @@ Training dataset configuration options for saved HDF5 datasets are specified in 
 
 !!! Note
     Feature scaling is split into continuous (numerical) and discrete (categorical) feature scaling. Numerical features are scaled using the specified scaler, while categorical features are scaled using a label encoder (that also supports `partial_fit`). Categorical features are automatically detected based on their data type in the HDF5 metadata. If scaling is enabled for numerical features, label encoding is applied to categorical features automatically as well.
+
+!!! Note
+    Piecewise Linear Encoding (PLE) does not require feature scaling. It is a model layer applied directly on the raw feature values during model training.
 
 !!! Warning
     TNAnalysis only supports `minmax`, `standard`, and `label-encoder` scaling methods.

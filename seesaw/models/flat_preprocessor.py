@@ -71,6 +71,11 @@ class FlatPLENumEmbeddingModel(nn.Module):
         learn_bins = ple_dct.get("learn_bins", False)
         uniform_bins = ple_dct.get("uniform_bins", False)
 
+        act = ple_dct.get("act", None)
+        dropout = ple_dct.get("dropout", 0.0)
+        self.use_dropout = True if dropout > 0.0 else False
+        self.use_layernorm = ple_dct.get("layernorm", False)
+
         if learn_bins and uniform_bins:
             raise ValueError("Only one of learn_bins or uniform_bins can be True!")
 
@@ -81,6 +86,7 @@ class FlatPLENumEmbeddingModel(nn.Module):
                 learnable_ple = LearnablePiecewiseEncodingLayer(
                     bins=ple_dct["n_bins"],
                     embedding_dim=embedding_dim,
+                    act=act,
                     learn_bins=True if learn_bins else False,
                     bias=bias,
                 )
@@ -91,15 +97,31 @@ class FlatPLENumEmbeddingModel(nn.Module):
                     ple_file_hash_str=ple_dct["ple_file_hash_str"],
                     feature_idx=i,
                     embedding_dim=embedding_dim,
+                    act=act,
+                    bias=bias,
                     dataset_key=dataset_key,
                 )
                 ples.append(quantile_ple)
 
         self.ple = nn.ModuleList(ples)
 
+        if self.use_layernorm:
+            self.norm = nn.LayerNorm(embedding_dim)
+
+        if self.use_dropout:
+            self.dropout = nn.Dropout(dropout)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         embeddings = [self.ple[i](x[:, i]) for i in range(x.shape[1])]
-        return torch.stack(embeddings, dim=1)
+        x = torch.stack(embeddings, dim=1)
+
+        if self.use_layernorm:
+            x = self.norm(x)
+
+        if self.use_dropout:
+            x = self.dropout(x)
+
+        return x
 
 
 class FlatCatEmbeddingModel(nn.Module):

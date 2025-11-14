@@ -834,7 +834,7 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
 
         accumulated_true = torch.cat(self.accumulated_true)
         accumulated_pred = torch.cat(self.accumulated_pred)
-        np_accumulated_logits = torch.cat(self.accumulated_logits).numpy()
+        np_accumulated_logits = torch.cat(self.accumulated_logits).to(torch.float32).numpy()
 
         if not self.plotting_conf.get("disable_projections", True):
             tsne_pca_X = torch.cat(self.tsne_pca_X).numpy() if len(self.tsne_pca_X) != 0 else np.zeros((0,))
