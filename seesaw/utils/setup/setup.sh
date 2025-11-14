@@ -88,7 +88,7 @@ if [ -n "$ANALYSIS_ML_LOGS_DIR" ] && [ "$IS_LXPLUS" = 0 ]; then
                     ;;
             esac
         done
-        mlflow ui --backend-store-uri "file://${ANALYSIS_ML_LOGS_DIR}/mlruns" -p "$port"
+        mlflow ui --host 0.0.0.0 --allowed-hosts "mlflow.internal:5000,localhost:*" --backend-store-uri "sqlite:///${ANALYSIS_ML_LOGS_DIR}/mlruns/mlflow.sqlite" -p "$port"
     }
 
     echo "Use \`track -p <PORT>\` to start the MLFlow UI"

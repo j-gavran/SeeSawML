@@ -73,12 +73,18 @@ def get_callbacks(
     return callbacks
 
 
+def disable_mlflow_tracking() -> None:
+    os.environ["MLFLOW_DISABLE_TELEMETRY"] = "true"
+    os.environ["DO_NOT_TRACK"] = "true"
+
+
 def get_logger(
-    experiemnt_name: str,
+    experiment_name: str,
     run_name: str,
     save_dir: str,
     comet_api_key: str | None = None,
     comet_project_name: str | None = None,
+    mlflow_tracking_uri: str | None = None,
 ) -> Logger:
     if comet_api_key is not None:
         logging.info("[green]Using Comet logger!")
@@ -88,15 +94,26 @@ def get_logger(
             experiment_name=run_name,
         )
         setattr(comet_logger, "_run_name", run_name)
+
         return comet_logger
     else:
-        logging.info("[green]Using MLFlow logger!")
+        logging.info("[green]Using MLflow logger!")
+        disable_mlflow_tracking()
+
+        os.makedirs(save_dir, exist_ok=True)
+
+        if mlflow_tracking_uri is None:
+            mlflow_tracking_uri = f"sqlite:///{save_dir}/mlflow.sqlite"
+            logging.info(f"Setting MLflow tracking URI to {mlflow_tracking_uri}.")
+
         mlf_logger = MLFlowLogger(
-            experiment_name=experiemnt_name,
+            experiment_name=experiment_name,
             run_name=run_name,
-            save_dir=save_dir,
+            tracking_uri=mlflow_tracking_uri,
+            artifact_location=save_dir,
             log_model=False,
         )
+
         return mlf_logger
 
 
