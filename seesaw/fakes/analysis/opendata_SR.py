@@ -155,10 +155,10 @@ class FakeFactorProcessor(Processor):
     def _get_numer_scaler(
         self, dataset_config: DictConfig, numer_column_names: list[str], extra_hash: str = ""
     ) -> NumericalFeatureScaler | None:
-        scaler_type = dataset_config.feature_scaling.scaler_type
+        numer_scaler_type = dataset_config.feature_scaling.get("numer_scaler_type", None)
         scaler_path = dataset_config.feature_scaling.save_path
 
-        numer_scaler = NumericalFeatureScaler(scaler_type, save_path=scaler_path).load(
+        numer_scaler = NumericalFeatureScaler(numer_scaler_type, save_path=scaler_path).load(
             column_names=numer_column_names, postfix="events_0", extra_hash=extra_hash
         )
 
@@ -170,9 +170,10 @@ class FakeFactorProcessor(Processor):
     def _get_categ_scaler(
         self, dataset_config: DictConfig, numer_column_names: list[str], extra_hash: str = ""
     ) -> CategoricalFeatureScaler | None:
+        categ_scaler_type = dataset_config.feature_scaling.get("categ_scaler_type", None)
         scaler_path = dataset_config.feature_scaling.save_path
 
-        categ_scaler = CategoricalFeatureScaler("categorical", save_path=scaler_path).load(
+        categ_scaler = CategoricalFeatureScaler(categ_scaler_type, save_path=scaler_path).load(
             column_names=numer_column_names, postfix="events_0", extra_hash=extra_hash
         )
 

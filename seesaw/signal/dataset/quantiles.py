@@ -33,13 +33,13 @@ def main(config: DictConfig) -> None:
 
     if feature_scaling_config is not None:
         feature_scaling_kwargs = {
-            "scaler_type": feature_scaling_config.scaler_type,
-            "scaler_path": feature_scaling_config.save_path,
+            "numer_scaler_type": feature_scaling_config.get("numer_scaler_type", None),
+            "categ_scaler_type": feature_scaling_config.get("categ_scaler_type", None),
+            "scaler_path": feature_scaling_config.get("save_path", None),
             "scalers_extra_hash": str(dataset_conf.files),
         }
     else:
-        logging.error("Feature scaling is disabled!")
-        raise ValueError("Feature scaling must be enabled for quantile bin calculation!")
+        logging.info("Feature scaling is disabled.")
 
     ple_bins = dataset_conf.get("ple_bins", None)
     if ple_bins is None:

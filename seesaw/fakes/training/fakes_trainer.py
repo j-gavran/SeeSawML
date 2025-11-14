@@ -66,8 +66,9 @@ def get_fakes_data_module(
 
     if feature_scaling_config is not None:
         feature_scaling_kwargs = {
-            "scaler_type": feature_scaling_config.scaler_type,
-            "scaler_path": feature_scaling_config.save_path,
+            "numer_scaler_type": feature_scaling_config.get("numer_scaler_type", None),
+            "categ_scaler_type": feature_scaling_config.get("categ_scaler_type", None),
+            "scaler_path": feature_scaling_config.get("save_path", None),
             "scalers_extra_hash": str(dataset_conf.files),
         }
     else:

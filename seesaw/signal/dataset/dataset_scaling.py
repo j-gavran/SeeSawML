@@ -25,12 +25,7 @@ def main(config: DictConfig) -> None:
     dataset_config = config.dataset_config
     feature_scaling_config = dataset_config.feature_scaling
 
-    scaler_kwargs = dict(feature_scaling_config)
-
-    scaler_kwargs.pop("scaler_type", None)
-    scaler_kwargs.pop("save_path", None)
-    scaler_kwargs.pop("n_max", None)
-
+    scaler_kwargs = dict(feature_scaling_config.scaler_params)
     dataloader_kwargs = dict(dataset_config.dataloader_kwargs)
 
     if dataloader_kwargs.get("batch_size", None) is not None:
@@ -48,10 +43,14 @@ def main(config: DictConfig) -> None:
             dataset_kwargs["remap_labels"] = remap_labels
             dataset_kwargs["max_label"] = max(labels.values())
 
+    numer_scaler_type = feature_scaling_config.get("numer_scaler_type", None)
+    categ_scaler_type = feature_scaling_config.get("categ_scaler_type", None)
+
     ds_scaler = DatasetScaler(
         dataset_config.files,
-        feature_scaling_config.scaler_type,
         dataset_config.features,
+        numer_scaler_type=numer_scaler_type,
+        categ_scaler_type=categ_scaler_type,
         scaler_save_path=feature_scaling_config.save_path,
         n_max=feature_scaling_config.get("n_max", None),
         extra_hash=str(config.dataset_config.files),

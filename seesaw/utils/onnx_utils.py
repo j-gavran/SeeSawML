@@ -50,7 +50,7 @@ def get_metadata(
     categ_scaler_dct = reports.get("categ_feature_scaler_dct", None)
 
     if scaler_dct is None:
-        scalers = reports.get("scaler", None)
+        scalers = reports.get("numer_scaler", None)
     else:
         scalers = scaler_dct[dataset_name]
 

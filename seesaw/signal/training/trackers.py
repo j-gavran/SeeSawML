@@ -92,7 +92,6 @@ class SigBkgClassifierTracker(Tracker):
             "roc": f"{self.base_dir}/roc/",
             "confmat": f"{self.base_dir}/confmat/",
             "scores": f"{self.base_dir}/score/",
-            "custom_scores": f"{self.base_dir}/custom_score/",
         }
 
     def calculate_roc(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
@@ -776,6 +775,7 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
             "roc": f"{self.base_dir}/roc/",
             "confmat": f"{self.base_dir}/confmat/",
             "scores": f"{self.base_dir}/score/",
+            "custom_scores": f"{self.base_dir}/custom_score/",
         }
 
     def calculate_cm(self, y_true: torch.Tensor, y_pred: torch.Tensor) -> np.ndarray:

@@ -338,7 +338,7 @@ def get_density_ratio(config: DictConfig) -> DensityRatioResult:
     mesh = construct_meshes(column_names, base_binning_dct, base_variables_dct)
 
     categ_scaler, categ_column_idx = report["categ_scaler"], events_column.offset_categ_columns_idx
-    numer_scaler, numer_column_idx = report["scaler"], events_column.offset_numer_columns_idx
+    numer_scaler, numer_column_idx = report["numer_scaler"], events_column.offset_numer_columns_idx
 
     if plot_config.use_density:
         density_ratio = DensityRatio(config.model_config.training_config.loss)

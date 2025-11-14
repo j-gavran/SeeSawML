@@ -187,7 +187,7 @@ class NumDenTracker(Tracker):
 
         w_nn_data, w_nn_mc = np.nan_to_num(w_nn_data), np.nan_to_num(w_nn_mc)  # type: ignore
 
-        feature_scaler = reports["scaler"]
+        feature_scaler = reports["numer_scaler"]
         if feature_scaler is not None:
             if X_data.shape[0] >= 1:
                 X_data = feature_scaler.inverse_transform(X_data)

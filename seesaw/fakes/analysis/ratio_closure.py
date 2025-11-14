@@ -45,8 +45,9 @@ def get_data_module(dataset_conf: DictConfig, disable_scaling: bool = False) -> 
 
     if not disable_scaling and feature_scaling_config is not None:
         feature_scaling_kwargs = {
-            "scaler_type": feature_scaling_config.scaler_type,
-            "scaler_path": feature_scaling_config.save_path,
+            "numer_scaler_type": feature_scaling_config.get("numer_scaler_type", None),
+            "categ_scaler_type": feature_scaling_config.get("categ_scaler_type", None),
+            "scaler_path": feature_scaling_config.get("save_path", None),
             "scalers_extra_hash": str(dataset_conf.files),
         }
     else:
@@ -257,7 +258,7 @@ def _get_binned_closure_hists(
     unsorted_column_names = set(events_column.used_columns) - set(events_column.extra_columns)
     column_names = np.array([str(c) for c in events_column.used_columns if c in unsorted_column_names])[numer_idx]
 
-    scaler = reports["scaler"]
+    scaler = reports["numer_scaler"]
 
     # find the indices of pt, eta, met columns
     pt_idx, met_idx, eta_idx = names_idx["pt"], names_idx["met"], names_idx["eta"]
@@ -323,7 +324,7 @@ def _get_nn_closure_hists(
 
     numer_idx, categ_idx = events_column.offset_numer_columns_idx, events_column.offset_categ_columns_idx
     column_names = sorted(set(events_column.used_columns) - set(events_column.extra_columns))
-    scaler = reports["scaler"]
+    scaler = reports["numer_scaler"]
 
     data_mask, mc_mask = y == 1, y == 0
     tight_mask, loose_mask = y_lt == 1, y_lt == 0

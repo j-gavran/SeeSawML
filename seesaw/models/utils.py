@@ -560,13 +560,22 @@ def load_model_from_config(
             f"Loaded: {loaded_features}, Current: {config_features}"
         )
 
-    loaded_scaler_type = hyper_params["dataset_conf"]["feature_scaling"]["scaler_type"]
-    config_scaler_type = config.dataset_config.feature_scaling.scaler_type
+    loaded_numer_scaler_type = hyper_params["dataset_conf"]["feature_scaling"].get("numer_scaler_type", None)
+    config_numer_scaler_type = config.dataset_config.feature_scaling.get("numer_scaler_type", None)
 
-    if loaded_scaler_type != config_scaler_type:
+    if loaded_numer_scaler_type != config_numer_scaler_type:
         raise ValueError(
-            "Feature scaling type in the loaded model does not match the current dataset configuration! "
-            f"Loaded: {loaded_scaler_type}, Current: {config_scaler_type}"
+            "Numerical feature scaling type in the loaded model does not match the current dataset configuration! "
+            f"Loaded: {loaded_numer_scaler_type}, Current: {config_numer_scaler_type}"
+        )
+
+    loaded_categ_scaler_type = hyper_params["dataset_conf"]["feature_scaling"].get("categ_scaler_type", None)
+    config_categ_scaler_type = config.dataset_config.feature_scaling.get("categ_scaler_type", None)
+
+    if loaded_categ_scaler_type != config_categ_scaler_type:
+        raise ValueError(
+            "Categorical feature scaling type in the loaded model does not match the current dataset configuration! "
+            f"Loaded: {loaded_categ_scaler_type}, Current: {config_categ_scaler_type}"
         )
 
     compile_model = hyper_params["model_conf"]["architecture_config"].get("compile", False)

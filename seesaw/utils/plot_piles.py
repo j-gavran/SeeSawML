@@ -215,8 +215,9 @@ def main():
 
     if args.scale:
         logging.info("Using feature scaling.")
-        dataset_kwargs["scaler_type"] = config.dataset_config.feature_scaling.scaler_type
-        dataset_kwargs["scaler_path"] = config.dataset_config.feature_scaling.save_path
+        dataset_kwargs["numer_scaler_type"] = config.dataset_config.feature_scaling.get("numer_scaler_type", None)
+        dataset_kwargs["categ_scaler_type"] = config.dataset_config.feature_scaling.get("categ_scaler_type", None)
+        dataset_kwargs["scaler_path"] = config.dataset_config.feature_scaling.get("save_path", None)
         dataset_kwargs["scalers_extra_hash"] = str(config.dataset_config.files)
 
     if args.weighted:
