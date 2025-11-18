@@ -1,4 +1,5 @@
 import logging
+import multiprocessing
 import os
 
 import numpy as np
@@ -93,6 +94,22 @@ def load_dataset_column_from_config(config: DictConfig, dataset: str) -> Dataset
         config.model_config.load_checkpoint.split("_epoch")[0],
         dataset,
     )
+
+
+def verify_num_workers(num_workers: int, stage_split_piles: dict[str, int | list[int]]) -> None:
+    if num_workers == -1:
+        num_workers = multiprocessing.cpu_count()
+
+    for key, values in stage_split_piles.items():
+        if isinstance(values, list):
+            value = len(values)
+        else:
+            value = values
+
+        if num_workers > value and value != 0:
+            raise ValueError(
+                f"Number of workers {num_workers} cannot be greater than the number of {key} samples {value}!"
+            )
 
 
 class InvalidConfigError(Exception):

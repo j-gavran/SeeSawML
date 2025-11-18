@@ -8,7 +8,6 @@ from f9columnar.ml.hdf5_dataloader import (
     remap_labels_lookup,
 )
 from omegaconf import DictConfig, ListConfig
-from sklearn.preprocessing import OneHotEncoder
 
 
 def handle_events_signal_dataset(
@@ -25,8 +24,6 @@ def handle_events_signal_dataset(
     imbalanced_sampler = ml_iterator.imbalanced_sampler
     remap_labels: dict[int, int] | None = ml_iterator.dataset_kwargs.get("remap_labels", None)
 
-    y_classes: np.ndarray | None = None
-
     if remap_labels is not None:
         max_label = ml_iterator.dataset_kwargs["max_label"]
         y, mask_unmapped = remap_labels_lookup(y, max_label, remap_labels)
@@ -35,45 +32,22 @@ def handle_events_signal_dataset(
             return None
 
         X, w = X[mask_unmapped], w[mask_unmapped]
-        y_classes = y.copy()
 
-    X, y, w = X.astype(np.float32), y.astype(np.float32), w.astype(np.float32)
-
-    if y_classes is not None:
-        y_classes = y_classes.astype(np.float32)
+    X, y, w = X.astype(np.float32), y.astype(np.int64), w.astype(np.float32)
 
     if imbalanced_sampler is not None:
         if len(np.unique(y)) >= 2:
-            if y_classes is not None:
-                X = np.concatenate([X, y_classes[:, None], w[:, None]], axis=1)
-            else:
-                X = np.concatenate([X, w[:, None]], axis=1)
-
+            X = np.concatenate([X, w[:, None]], axis=1)
             X, y = imbalanced_sampler.fit(X, y)
-
-            if y_classes is not None:
-                X, w, y_classes = X[:, :-2], X[:, -1], X[:, -2]
-            else:
-                X, w = X[:, :-1], X[:, -1]
+            X, w = X[:, :-1], X[:, -1]
         else:
             return None
 
-    if remap_labels is not None:
-        label_values = np.unique(list(remap_labels.values()))
-
-        if len(label_values) > 2:
-            enc = OneHotEncoder(handle_unknown="ignore")
-            enc.fit(label_values[:, None])
-            y = enc.transform(y[:, None]).toarray()
-
     if ml_iterator.shuffle:
         shuffle_idx = np.random.permutation(len(y))
-        X[:], y[:], w[:] = X[shuffle_idx], y[shuffle_idx], w[shuffle_idx]
+        X, y, w = X[shuffle_idx], y[shuffle_idx], w[shuffle_idx]
 
-        if y_classes is not None:
-            y_classes[:] = y_classes[shuffle_idx]
-
-    weighted_datase_batch["events"] = WeightedBatch(X, y, w, y_classes)
+    weighted_datase_batch["events"] = WeightedBatch(X, y, w, None)
 
     return weighted_datase_batch
 
@@ -90,36 +64,21 @@ def handle_full_signal_dataset(stacked_datasets: StackedDatasets, ml_iterator: M
 
     remap_labels: dict[int, int] | None = ml_iterator.dataset_kwargs.get("remap_labels", None)
     mask_unmapped: np.ndarray | None = None
-    y_classes: np.ndarray | None = None
 
     if remap_labels is not None:
         max_label = ml_iterator.dataset_kwargs["max_label"]
         y, mask_unmapped = remap_labels_lookup(y, max_label, remap_labels)
         X, w = X[mask_unmapped], w[mask_unmapped]
-        y_classes = y.copy()
 
-        label_values = np.unique(list(remap_labels.values()))
-
-        if len(label_values) > 2:
-            enc = OneHotEncoder(handle_unknown="ignore")
-            enc.fit(label_values[:, None])
-            y = enc.transform(y[:, None]).toarray()
+    y = y.astype(np.int64)
 
     if ml_iterator.shuffle:
         shuffle_idx = np.random.permutation(len(y))
-
-        X = X[shuffle_idx]
-        y = y[shuffle_idx]
-        w = w[shuffle_idx]
-
-        if y_classes is not None:
-            y_classes = y_classes[shuffle_idx]
+        X, y, w = X[shuffle_idx], y[shuffle_idx], w[shuffle_idx]
     else:
         shuffle_idx = None
 
-    y = y.astype(np.float32)
-
-    weighted_dataset_batch_dct["events"] = WeightedBatch(X, y, w, y_classes)
+    weighted_dataset_batch_dct["events"] = WeightedBatch(X, y, w, None)
 
     for ds_name, ds in stacked_datasets.items():
         if ds_name == "events":

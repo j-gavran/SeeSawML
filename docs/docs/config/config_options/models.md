@@ -1,4 +1,4 @@
-There are several model arhitectures available in the library. Each model may have its own specific configuration options. The configuration for each model type can be found in the `model_config/` directory. There are two top level YAML fields that are common to all models: `architecture_config` and `training_config`. The `architecture_config` field contains options specific to the model type, while the `training_config` field contains options related to the training process and is common across all models.
+There are several model architectures available in the library. Each model may have its own specific configuration options. The configuration for each model type can be found in the `model_config/` directory. There are two top level YAML fields that are common to all models: `architecture_config` and `training_config`. The `architecture_config` field contains options specific to the model type, while the `training_config` field contains options related to the training process and is common across all models.
 
 ## Common Configuration
 
@@ -103,7 +103,7 @@ In SeeSawML, embeddings are used to transform input physics variables into a hig
 
 1. Linear transformation of type `A*X + b` where `A` and `b` are learnable parameters.
 2. Feature-wise linear transformation where each feature has its own linear layer.
-3. Piecewise linear encoding (PLE) as described in [https://arxiv.org/abs/2203.05556](https://arxiv.org/abs/2203.05556), where mutliple binning schemes are possible: learnable, uniform, or quantile-based.
+3. Piecewise linear encoding (PLE) as described in [https://arxiv.org/abs/2203.05556](https://arxiv.org/abs/2203.05556), where multiple binning schemes are possible: learnable, uniform, or quantile-based.
 
 <figure markdown="span">
   ![Embedding NN](../../images/mlp_emb.png){ width="900" }
@@ -121,19 +121,25 @@ Embeddings configuration is specified under the `architecture_config` and `archi
 !!! Tip
     Quantile bins for piecewise linear encoding can be precomputed using the `calculate_quantiles` command before training the model. It can be enabled by setting the number of bins in `dataset_config.ple_bins`. It is recommended to use `minmax` scaler when using quantile bins.
 
-- `use_ple: bool`: Whether to use piecewise linear encoding for numerical features, by default `false`.
-- `uniform_ple_bins: bool`: Whether to use uniform binning for piecewise linear encoding, by default `false`.
-- `learn_ple_bins: bool`: Whether to make the bin edges learnable for piecewise linear encoding, by default `false`.
 - `reduction: str`: Reduction method for combining multiple feature embeddings. For flat embeddings: `mean`, `reshape`, `conv1d` or `none`, by default `mean`. For jagged embeddings: `mean`, `reshape`, or `conv2d`, by default `mean`.
+- `numer_feature_wise_linear: bool`: Whether to use feature-wise linear layers for numerical feature embeddings, by default `false`.
+- `ple: bool | None | dict[str, Any]`: Configuration for piecewise linear encoding (PLE) for numerical features, by default `null`, which means PLE is disabled.
+    - If set to `true`, uses default PLE configuration with.
+    - If set to a dictionary, allows to specify custom PLE parameters:
+        - `learn_bins: bool`: Whether to use learnable bin edges, by default `false`.
+        - `uniform_bins: bool`: Whether to use uniform binning, by default `false`.
+        - `act: str`: Activation function to use after PLE layer, by default `null`.
+        - `dropout: float`: Dropout rate to apply after PLE layer, by default `0.0`.
+        - `layernorm: bool`: Whether to apply layer normalization after PLE layer, by default `false`.
 
 For jagged embeddings, the following additional field is available:
 
-- `conv1d_embedding: bool`: Whether to use a 1D convolutional layer for projecting jagged feature embeddings per object. This opttion will disable all other embeddings and build a 1D convolutional layer with batch normalization and ReLU activation over the feature dimension for each object, by default `false`.
+- `conv1d_embedding: bool`: Whether to use a 1D convolutional layer for projecting jagged feature embeddings per object. This option will disable all other embeddings and build a 1D convolutional layer with batch normalization and ReLU activation over the feature dimension for each object, by default `false`.
 
 !!! Note
     `reduction` specifies how to combine multiple embeddings per feature into a single embedding vector. Input to the embedding module is expected to have shape $(B, F)$ where $B$ is the batch size and $F$ is the number of features. The output of an embedding module is of shape $(B, F, E)$ where $E$ is the embedding dimension. If `reduction` is set to `mean`, the output will be averaged over the feature dimension resulting in shape $(B, E)$. If set to `reshape`, the output will be reshaped to $(B, F\cdot E)$. If set to `conv1d`, a 1D convolution will be applied over the feature dimension to combine the embeddings to get $(B, E)$. If set to `none`, the output will retain its shape $(B, F, E)$.
 
-    For jagged features, the output of an embedding is $(B, P, F, E)$ and `reduction` is appllied over the feature dimension $F$ to get $(B, P, E)$.
+    For jagged features, the output of an embedding is $(B, P, F, E)$ and `reduction` is applied over the feature dimension $F$ to get $(B, P, E)$.
 
 The `architecture_config` can also take the `post_embeddings` field to specify additional layers after the embedding layer.
 
@@ -146,7 +152,7 @@ The `architecture_config` can also take the `post_embeddings` field to specify a
 !!! Note
     Embeddings are part of the model architecture and are trained jointly with the rest of the model parameters. They are defined in the [`flat_preprocessor`](https://seesawml.docs.cern.ch/api/models/preprocessing/#seesaw.models.flat_preprocessor) and [`jagged_preprocessor`](https://seesawml.docs.cern.ch/api/models/preprocessing/#seesaw.models.jagged_preprocessor) modules in the codebase. In both cases, the numerical and categorical features are handled separately and then concatenated to form the final embedding output. In the flat case, the embeddings are combined using the specified reduction method, while in the jagged case, the embeddings are kept as a sequence for further processing by transformer models.
 
-    More specificly in the jagged case, the input to is of shape $K \times (B, P_k, F_k)$ where $K$ is the numer of objects (e.g. jets, electrons, etc.), $B$ is the batch size, $P$ is the maximum number of particles (padded) and $F$ is the number of features per object. In this case $P$ and $F$ dimensions can vary for each object $k \in K$. The output of the embedding module is of shape $K \times (B, P_k, F_k, E)$ where $E$ is the feature embedding dimension per particle. After the per object embedding, a projection layer (`reduction`) is applied to get the final shape of $K \times (B, P_k, E)$ which is then concatenated over the object dimension to get a final sequence of shape $(B, \sum_{k}^K P_k, E)$ which is then fed into the transformer model. The projection layer can be a linear layer or a 2D convolutional layer depending on the `conv2d_projection` option and is applied over the feature dimension for each object.
+    More specifically in the jagged case, the input to is of shape $K \times (B, P_k, F_k)$ where $K$ is the number of objects (e.g. jets, electrons, etc.), $B$ is the batch size, $P$ is the maximum number of particles (padded) and $F$ is the number of features per object. In this case $P$ and $F$ dimensions can vary for each object $k \in K$. The output of the embedding module is of shape $K \times (B, P_k, F_k, E)$ where $E$ is the feature embedding dimension per particle. After the per object embedding, a projection layer (`reduction`) is applied to get the final shape of $K \times (B, P_k, E)$ which is then concatenated over the object dimension to get a final sequence of shape $(B, \sum_{k}^K P_k, E)$ which is then fed into the transformer model. The projection layer can be a linear layer or a 2D convolutional layer depending on the `conv2d_projection` option and is applied over the feature dimension for each object.
 
 ### Feedforward Neural Networks
 
@@ -234,7 +240,7 @@ Implements deep sets architecture from [https://arxiv.org/abs/1703.06114](https:
 !!! Info
     Deep sets architecture is designed to handle set-structured data and is permutation invariant to the order of the input features. The model consists of an encoder that processes each element in the set independently, followed by a pooling operation (mean pooling) to aggregate the information from all elements. The aggregated representation is then passed through a decoder MLP to produce the final output.
 
-    Encoder is implemnetd as a stack of 1D convolutional layers with kernel size 1, which is equivalent to applying a fully connected layer to each element in the set independently. Each convolutional layer is followed by an activation function, batch normalization (if enabled), and dropout (if specified). After the encoder, mean pooling is applied across the set dimension to obtain a fixed-size representation. This representation is then fed into the decoder MLP.
+    Encoder is implemented as a stack of 1D convolutional layers with kernel size 1, which is equivalent to applying a fully connected layer to each element in the set independently. Each convolutional layer is followed by an activation function, batch normalization (if enabled), and dropout (if specified). After the encoder, mean pooling is applied across the set dimension to obtain a fixed-size representation. This representation is then fed into the decoder MLP.
 
     For jagged input features, the model handles variable-length sequences through masking using [`scatter_mean`](https://docs.pytorch.org/docs/stable/generated/torch.scatter_reduce.html) operation to perform mean pooling only over valid (non-padded) elements. Additionally, masking is also performed in jagged embeddings to ensure padded values do not contribute to the embedding output.
 
@@ -242,7 +248,7 @@ Implements deep sets architecture from [https://arxiv.org/abs/1703.06114](https:
 
 #### Feature Tokenizer Transformer
 
-Implemnets feature tokenzier transformer from [https://arxiv.org/abs/2106.11959](https://arxiv.org/abs/2106.11959). The model is used for flat input features only. Each feature is first embedded using the embedding module described above and then passed through a series of transformer encoder layers. The output of the transformer is then pooled or a cls token is used and passed through a final MLP for classification.
+Implements feature tokenzier transformer from [https://arxiv.org/abs/2106.11959](https://arxiv.org/abs/2106.11959). The model is used for flat input features only. Each feature is first embedded using the embedding module described above and then passed through a series of transformer encoder layers. The output of the transformer is then pooled or a cls token is used and passed through a final MLP for classification.
 
 <figure markdown="span">
   ![Embedding NN](../../images/ftt.png){ width="900" }

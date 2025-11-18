@@ -30,12 +30,12 @@ def sigmoid_focal_loss(
     pos_weight : float, optional
         The positive class weight, by default 1.
     smoothing : float, optional
-        The label smoothing value, by default 0.05.
+        The label smoothing value, by default 0.0.
     reduction : str, optional
         The reduction method for the loss, by default "mean".
     """
 
-    if smoothing > 0:
+    if smoothing > 0.0:
         target = target - (target - 0.5).sign() * torch.rand_like(target) * smoothing
 
     ce_loss = F.binary_cross_entropy_with_logits(output, target.view_as(output), reduction="none")
@@ -80,12 +80,12 @@ def multiclass_focal_loss(
     alpha : torch.Tensor | None, optional
         Class weights for each class, by default None.
     smoothing : float, optional
-        The label smoothing value, by default 0.05.
+        The label smoothing value, by default 0.0.
     reduction : str, optional
         The reduction method for the loss, by default "mean".
     """
 
-    if smoothing > 0:
+    if smoothing > 0.0:
         num_classes = target.size(1)
         target = (1.0 - smoothing) * target + (smoothing / num_classes)
 

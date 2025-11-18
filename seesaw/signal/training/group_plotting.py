@@ -19,15 +19,13 @@ def plot_multiclass_group_score(
     save_postfix: str,
     nbins: int = 100,
 ) -> None:
-    y_true_class_indices = np.argmax(y_true, axis=1)
-
     bins = list(np.linspace(0, 1, nbins))
 
     figs = []
     for group_name, group_indices in index_groups.items():
         group_scores = np.sum(y_pred[:, group_indices], axis=1)
 
-        signal_mask = np.isin(y_true_class_indices, group_indices)
+        signal_mask = np.isin(y_true, group_indices)
         signal_scores = group_scores[signal_mask]
 
         background_mask = ~signal_mask
@@ -96,15 +94,13 @@ def plot_multiclass_group_discriminant(
     group_names = list(index_groups.keys())
     ds = multiclass_group_discriminant(y_pred, [index_groups[g] for g in group_names])
 
-    y_true_class_indices = np.argmax(y_true, axis=1)
-
     figs = []
     for i, group_name in enumerate(group_names):
         group_indices = index_groups[group_name]
 
         class_scores = ds[i]
 
-        signal_mask = np.isin(y_true_class_indices, group_indices)
+        signal_mask = np.isin(y_true, group_indices)
         signal_scores = class_scores[signal_mask]
 
         background_mask = ~signal_mask
@@ -185,8 +181,8 @@ def plot_group_one_vs_rest_score(
         return
 
     p_group = np.sum(y_pred[:, member_idx], axis=1)
-    y_true_idx = np.argmax(y_true, axis=1)
-    is_signal = np.isin(y_true_idx, member_idx)
+
+    is_signal = np.isin(y_true, member_idx)
 
     score_sig = p_group[is_signal]
     score_bkg = p_group[~is_signal]
@@ -240,8 +236,8 @@ def plot_group_one_vs_rest_roc(
         return
 
     p_group = np.sum(y_pred[:, member_idx], axis=1)
-    y_true_idx = np.argmax(y_true, axis=1)
-    is_signal = np.isin(y_true_idx, member_idx)
+
+    is_signal = np.isin(y_true, member_idx)
 
     # 1 for signal, 0 for rest
     y_true_binary = is_signal.astype(int)
@@ -279,8 +275,7 @@ def plot_group_one_vs_rest_discriminant(
     p_rest = 1.0 - p_group
     disc = np.log((p_group + 1e-12) / (p_rest + 1e-12))
 
-    y_true_idx = np.argmax(y_true, axis=1)
-    is_signal = np.isin(y_true_idx, member_idx)
+    is_signal = np.isin(y_true, member_idx)
 
     signal_scores = disc[is_signal]
     background_scores = disc[~is_signal]

@@ -2,7 +2,7 @@ import logging
 import os
 import re
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, Type
 
 import lightning as L
 import psutil
@@ -54,6 +54,12 @@ class BaseLightningModule(ABC, L.LightningModule):
             self.tracker = None
         else:
             self.tracker = tracker(self)
+
+    def wrap_model(self, model_wrapper: Type[torch.nn.Module], **kwargs: Any) -> None:
+        self.model = model_wrapper(self.model, **kwargs)
+
+    def recompile(self, **kwargs: Any) -> None:
+        self.model.compile(**kwargs)
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         optimizer = select_nn_optimizer(
@@ -123,6 +129,12 @@ class BaseLightningModule(ABC, L.LightningModule):
         return text
 
     def on_train_start(self) -> None:
+        try:
+            self.logger.experiment.log_text(self.logger.run_id, self._clean_model_str(str(self)), "model_str.txt")  # type: ignore[union-attr]
+        except AttributeError:
+            pass
+
+    def on_test_start(self) -> None:
         try:
             self.logger.experiment.log_text(self.logger.run_id, self._clean_model_str(str(self)), "model_str.txt")  # type: ignore[union-attr]
         except AttributeError:

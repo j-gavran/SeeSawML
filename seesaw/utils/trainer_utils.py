@@ -104,7 +104,6 @@ def get_logger(
 
         if mlflow_tracking_uri is None:
             mlflow_tracking_uri = f"sqlite:///{save_dir}/mlflow.sqlite"
-            logging.info(f"Setting MLflow tracking URI to {mlflow_tracking_uri}.")
 
         mlf_logger = MLFlowLogger(
             experiment_name=experiment_name,
@@ -131,9 +130,8 @@ def get_trainer(
     """
     precision = experiment_conf.get("precision", "32-true")
 
-    if "32" in str(precision):
-        float32_matmul_precision = experiment_conf.get("float32_matmul_precision", "high")
-        torch.set_float32_matmul_precision(float32_matmul_precision)
+    float32_matmul_precision = experiment_conf.get("float32_matmul_precision", "high")
+    torch.set_float32_matmul_precision(float32_matmul_precision)
 
     if val_check_interval is None:
         check_val_every_n_epoch = experiment_conf.check_eval_n_epoch

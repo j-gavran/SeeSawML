@@ -310,7 +310,7 @@ class SigBkgMulticlassClassifierTracker(Tracker):
 
     def calculate_cm(self, y_true: torch.Tensor, y_pred: torch.Tensor) -> np.ndarray:
         cm = MulticlassConfusionMatrix(self.num_classes)
-        return cm(torch.argmax(y_pred, dim=1), torch.argmax(y_true, dim=1)).numpy()
+        return cm(torch.argmax(y_pred, dim=1), y_true).numpy()
 
     def compute(self, batch: WeightedBatchType, stage: str) -> bool:
         self.stage, self.current_epoch = stage, self.module.current_epoch
@@ -325,7 +325,7 @@ class SigBkgMulticlassClassifierTracker(Tracker):
             return False
 
         X, y_true, _, _, _ = batch
-        y_true = y_true.long().cpu()
+        y_true = y_true.cpu()
 
         y_pred_logits = self.module(X)
         y_pred = torch.softmax(y_pred_logits, dim=1).cpu()
@@ -333,7 +333,7 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         if self.current_events == 0:
             self.tsne_pca_X.append(X.cpu())
             self.tsne_pca_y_pred.append(torch.argmax(y_pred, dim=1))
-            self.tsne_pca_y_true.append(torch.argmax(y_true, dim=1))
+            self.tsne_pca_y_true.append(y_true)
 
         self.accumulated_logits.append(y_pred_logits.cpu())
         self.accumulated_true.append(y_true)
@@ -589,10 +589,10 @@ class JaggedSigBkgClassifierTracker(Tracker):
                 Xs.append(batch[0][k][0])
 
         X_events = batch[0]["events"][0]
-        y_true, mc_weights, y_classes = batch[0]["events"][1], batch[0]["events"][2], batch[0]["events"][3]
+        y_true, mc_weights = batch[0]["events"][1], batch[0]["events"][2]
 
-        if y_true is None or mc_weights is None or y_classes is None:
-            raise ValueError("y, w, or y_classes is None!")
+        if y_true is None or mc_weights is None:
+            raise ValueError("y or w is None!")
 
         if "signal" not in reports["class_labels"] or "background" not in reports["class_labels"]:
             logging.warning("Expected 'signal' and 'background' labels in class_labels, but they are missing.")
@@ -780,7 +780,7 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
 
     def calculate_cm(self, y_true: torch.Tensor, y_pred: torch.Tensor) -> np.ndarray:
         cm = MulticlassConfusionMatrix(self.num_classes)
-        return cm(torch.argmax(y_pred, dim=1), torch.argmax(y_true, dim=1)).numpy()
+        return cm(torch.argmax(y_pred, dim=1), y_true).numpy()
 
     def compute(self, batch: FullWeightedBatchType, stage: str) -> bool:
         self.stage, self.current_epoch = stage, self.module.current_epoch
@@ -800,12 +800,11 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
             if k != "events":
                 Xs.append(batch[0][k][0])
 
-        X = batch[0]["events"][0]
-        y_true = batch[0]["events"][1]
+        X, y_true = batch[0]["events"][0], batch[0]["events"][1]
         if y_true is None:
             return False
 
-        y_true = y_true.long().cpu()
+        y_true = y_true.cpu()
 
         y_pred_logits = self.module(X, Xs)
         y_pred = torch.softmax(y_pred_logits, dim=1).cpu()
@@ -813,7 +812,7 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
         if self.current_events == 0:
             self.tsne_pca_X.append(X.cpu())
             self.tsne_pca_y_pred.append(torch.argmax(y_pred, dim=1))
-            self.tsne_pca_y_true.append(torch.argmax(y_true, dim=1))
+            self.tsne_pca_y_true.append(y_true)
 
         self.accumulated_logits.append(y_pred_logits.cpu())
         self.accumulated_true.append(y_true)

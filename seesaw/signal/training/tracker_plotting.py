@@ -379,8 +379,10 @@ def plot_multiclass_one_vs_rest_roc(
     num_classes = len(class_labels)
     fpr, tpr, roc_auc = {}, {}, {}
 
+    y_ohe = np.eye(num_classes)[y_true.reshape(-1)]
+
     for i in range(num_classes):
-        fpr[i], tpr[i], _ = roc_curve(y_true[:, i], y_pred[:, i])
+        fpr[i], tpr[i], _ = roc_curve(y_ohe[:, i], y_pred[:, i])
         roc_auc[i] = auc(fpr[i], tpr[i])
 
     inverse_class_labels = {v: k for k, v in class_labels.items()}
@@ -466,18 +468,16 @@ def plot_multiclass_one_vs_rest_score(
 
     bins = list(np.linspace(0, 1, nbins))
 
-    y_true_class_indices = np.argmax(y_true, axis=1)
-
     figs = []
     for class_idx in range(len(class_labels)):
         signal_label = plot_labels[class_idx]
 
         class_scores = y_pred[:, class_idx]
 
-        signal_mask = y_true_class_indices == class_idx
+        signal_mask = y_true == class_idx
         signal_scores = class_scores[signal_mask]
 
-        background_mask = y_true_class_indices != class_idx
+        background_mask = y_true != class_idx
         background_scores = class_scores[background_mask]
 
         fig, ax = plt.subplots(figsize=(7.0, 6.25))
@@ -541,18 +541,16 @@ def plot_multiclass_discriminant_one_vs_rest(
     inverse_class_labels = {v: k for k, v in class_labels.items()}
     labels = [get_label(inverse_class_labels[i]).latex_name for i in range(len(class_labels))]
 
-    y_true_class_indices = np.argmax(y_true, axis=1)
-
     figs = []
     for i, label in enumerate(labels):
         signal_label = label
 
         class_scores = ds[i]
 
-        signal_mask = y_true_class_indices == i
+        signal_mask = y_true == i
         signal_scores = class_scores[signal_mask]
 
-        background_mask = y_true_class_indices != i
+        background_mask = y_true != i
         background_scores = class_scores[background_mask]
 
         fig, ax = plt.subplots(figsize=(7.0, 6.25))

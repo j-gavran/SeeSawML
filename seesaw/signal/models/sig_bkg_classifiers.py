@@ -37,7 +37,6 @@ class BaseSigBkgNNClassifier:
             loss_name = model_conf.training_config.loss.loss_name
             loss_params = dict(model_conf.training_config.loss.get("loss_params", {}))
 
-        logging.info(f"Using {loss_name} loss function with parameters: {loss_params}.")
         self.loss_func = select_nn_loss(loss_name, **loss_params)
 
         classes = dataset_conf.get("classes", None)
@@ -60,7 +59,9 @@ class BaseSigBkgNNClassifier:
         else:
             self.is_multiclass = False
 
+        self.class_weights: dict[str, dict[int, float]] = {}
         self.setup_weights(use_mc_weights, use_class_weights)
+
         self.setup_disco(selection)
 
     def setup_weights(self, use_mc_weights: bool = False, use_class_weights: bool = False) -> None:
@@ -124,13 +125,13 @@ class BaseSigBkgNNClassifier:
         self,
         X: torch.Tensor,
         y_hat: torch.Tensor,
-        y_classes: torch.Tensor,
+        y: torch.Tensor,
         reports: dict[str, Any],
         weights: torch.Tensor | None = None,
     ) -> torch.Tensor:
         signal_idx = reports["class_labels"]["signal"]
 
-        y_bkg_idx = torch.where(y_classes != signal_idx)[0]
+        y_bkg_idx = torch.where(y != signal_idx)[0]
         X, y_hat = X[y_bkg_idx], y_hat[y_bkg_idx]
 
         if weights is not None:
@@ -186,11 +187,11 @@ class BaseSigBkgNNClassifier:
         y: torch.Tensor,
         w: torch.Tensor,
         y_hat: torch.Tensor,
-        y_classes: torch.Tensor,
         reports: dict[str, Any],
+        stage: str | None = None,
     ) -> torch.Tensor:
         if not self.is_multiclass:
-            y_hat = y_hat.squeeze(1)
+            y, y_hat = y.to(torch.float32), y_hat.squeeze(1)
 
         loss = self.loss_func(y_hat, y)
 
@@ -198,10 +199,13 @@ class BaseSigBkgNNClassifier:
             loss = torch.abs(w) * loss
 
         if self.use_class_weights:
-            class_weights = torch.zeros_like(y_classes, dtype=X.dtype)
+            class_weights = torch.zeros_like(y, dtype=X.dtype)
 
-            for class_label, class_weight in self.class_weights.items():
-                class_weights[y_classes == class_label] = class_weight
+            if stage is None:
+                raise RuntimeError("Stage must be provided when using class weights!")
+
+            for class_label, class_weight in self.class_weights[stage].items():
+                class_weights[y == class_label] = class_weight
 
             loss = class_weights * loss
 
@@ -213,7 +217,7 @@ class BaseSigBkgNNClassifier:
             if self.disco_weighted and self.use_class_weights:
                 disco_weights = disco_weights * class_weights
 
-            dcorr = self.disco_lambda * self.get_dcorr(X, y_hat, y_classes, reports, weights=disco_weights)
+            dcorr = self.disco_lambda * self.get_dcorr(X, y_hat, y, reports, weights=disco_weights)
             loss = torch.mean(loss) + dcorr
             self.dcorr = dcorr.item()
         else:
@@ -265,11 +269,11 @@ class SigBkgEventsNNClassifier(BaseSigBkgNNClassifier, BaseEventsLightningModule
         return self.model(X)
 
     def get_loss(self, batch: WeightedBatchType, stage: str | None = None) -> tuple[torch.Tensor, torch.Tensor | None]:
-        X, y, w, y_classes, reports = batch
+        X, y, w, _, reports = batch
 
         y_hat = self(X)
 
-        loss = self.get_classifier_loss(X, y, w, y_hat, y_classes, reports)
+        loss = self.get_classifier_loss(X, y, w, y_hat, reports, stage)
 
         if self.use_disco:
             self.log(f"{stage}_dcorr", self.dcorr, batch_size=self.get_batch_size(batch))
@@ -280,7 +284,7 @@ class SigBkgEventsNNClassifier(BaseSigBkgNNClassifier, BaseEventsLightningModule
         if self.binary_acc is not None:
             return self.binary_acc(y_hat.squeeze(1), batch[1])
         elif self.multi_acc is not None:
-            return self.multi_acc(y_hat, torch.argmax(batch[1], dim=1))
+            return self.multi_acc(y_hat, batch[1])
         else:
             raise RuntimeError("No accuracy metric defined for this model!")
 
@@ -339,14 +343,14 @@ class SigBkgFullNNClassifier(BaseSigBkgNNClassifier, BaseFullLightningModule):
                 Xs.append(batch[0][k][0])
 
         X_events = batch[0]["events"][0]
-        y, w, y_classes = batch[0]["events"][1], batch[0]["events"][2], batch[0]["events"][3]
+        y, w = batch[0]["events"][1], batch[0]["events"][2]
 
-        if y is None or w is None or y_classes is None:
-            raise ValueError("y, w, or y_classes is None, cannot compute loss!")
+        if y is None or w is None:
+            raise ValueError("y, or w is None, cannot compute loss!")
 
         y_hat = self(X_events, Xs)
 
-        loss = self.get_classifier_loss(X_events, y, w, y_hat, y_classes, batch[1])
+        loss = self.get_classifier_loss(X_events, y, w, y_hat, batch[1], stage)
 
         if self.use_disco:
             self.log(f"{stage}_dcorr", self.dcorr, batch_size=self.get_batch_size(batch))
@@ -354,14 +358,9 @@ class SigBkgFullNNClassifier(BaseSigBkgNNClassifier, BaseFullLightningModule):
         return loss, y_hat
 
     def get_accuracy(self, y_hat: torch.Tensor, batch: FullWeightedBatchType) -> torch.Tensor:
-        y_true = batch[0]["events"][1]
-
-        if y_true is None:
-            raise ValueError("y_true is None, cannot compute accuracy!")
-
         if self.binary_acc is not None:
-            return self.binary_acc(y_hat.squeeze(1), y_true)
+            return self.binary_acc(y_hat.squeeze(1), batch[0]["events"][1])
         elif self.multi_acc is not None:
-            return self.multi_acc(y_hat, torch.argmax(y_true, dim=1))
+            return self.multi_acc(y_hat, batch[0]["events"][1])
         else:
             raise RuntimeError("No accuracy metric defined for this model!")

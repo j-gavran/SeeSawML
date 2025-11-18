@@ -1,15 +1,17 @@
 import logging
 import os
-from typing import Any
+from typing import Any, Type
 
 import hydra
 import lightning as L
+import torch
 from f9columnar.ml.dataloader_helpers import get_hdf5_columns, get_hdf5_metadata
 from f9columnar.ml.hdf5_dataloader import events_collate_fn, full_collate_fn
 from f9columnar.ml.lightning_data_module import LightningHdf5DataModule
 from lightning.pytorch import seed_everything
 from omegaconf import DictConfig, open_dict
 
+from seesaw.models.calibration import get_calibration_split, get_calibration_wrapper
 from seesaw.models.nn_modules import BaseLightningModule
 from seesaw.models.tracker import Tracker
 from seesaw.models.utils import load_model_from_config
@@ -21,7 +23,7 @@ from seesaw.signal.training.trackers import (
     SigBkgMulticlassClassifierTracker,
 )
 from seesaw.signal.utils import get_classifier_labels, handle_events_signal_dataset, handle_full_signal_dataset
-from seesaw.utils.helpers import setup_analysis_dirs
+from seesaw.utils.helpers import setup_analysis_dirs, verify_num_workers
 from seesaw.utils.loggers import log_hydra_config, setup_logger
 from seesaw.utils.trainer_utils import (
     get_callbacks,
@@ -33,7 +35,11 @@ from seesaw.utils.trainer_utils import (
 
 
 def get_signal_data_module(
-    dataset_conf: DictConfig, dataset_name: str, model_name: str, events_only: bool = True
+    dataset_conf: DictConfig,
+    dataset_name: str,
+    model_name: str,
+    events_only: bool = True,
+    is_calibration: bool = False,
 ) -> L.LightningDataModule:
     feature_scaling_config = dataset_conf.get("feature_scaling", None)
 
@@ -76,11 +82,18 @@ def get_signal_data_module(
 
     dm_name = f"{dataset_name} - {model_name[0].upper() + model_name[1:]}"
 
+    stage_split_piles = dataset_conf.stage_split_piles
+    if "calib" in stage_split_piles:
+        logging.info("[yellow]Calibration split detected in stage_split_piles.")
+        stage_split_piles = get_calibration_split(dict(stage_split_piles), add_calib_train=is_calibration)
+
+    verify_num_workers(dataloader_kwargs.get("num_workers", -1), stage_split_piles)
+
     dm_iter = LightningHdf5DataModule(
         dm_name,
         dataset_conf.files,
         dataset_conf.features,
-        stage_split_piles=dataset_conf.stage_split_piles,
+        stage_split_piles=stage_split_piles,
         shuffle=True,
         collate_fn=collate_func,
         dataset_kwargs=dataset_kwargs,
@@ -125,10 +138,27 @@ def load_sig_bkg_model(
     checkpoint_path: str | None = None,
     **kwargs: Any,
 ) -> tuple[BaseLightningModule, str]:
-    if events_only:
-        return load_model_from_config(config, SigBkgEventsNNClassifier, checkpoint_path=checkpoint_path, **kwargs)
+    if "_calib.ckpt" in config.model_config.load_checkpoint:
+        calib_wrapper = get_calibration_wrapper(config.model_config.calibration_config.method, events_only)
     else:
-        return load_model_from_config(config, SigBkgFullNNClassifier, checkpoint_path=checkpoint_path, **kwargs)
+        calib_wrapper = None
+
+    if events_only:
+        return load_model_from_config(
+            config,
+            SigBkgEventsNNClassifier,
+            checkpoint_path=checkpoint_path,
+            model_wrapper=calib_wrapper,
+            **kwargs,
+        )
+    else:
+        return load_model_from_config(
+            config,
+            SigBkgFullNNClassifier,
+            checkpoint_path=checkpoint_path,
+            model_wrapper=calib_wrapper,
+            **kwargs,
+        )
 
 
 def verify_loss(is_multiclass: bool, model_conf: DictConfig) -> None:
@@ -184,6 +214,7 @@ def sig_bkg_trainer(config: DictConfig) -> None:
     train_stage = True
 
     load_checkpoint = model_config.load_checkpoint
+
     if load_checkpoint is not None:
         model_save_file = os.path.join(model_config.training_config.model_save_path, load_checkpoint)
 

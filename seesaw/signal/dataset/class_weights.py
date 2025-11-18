@@ -13,49 +13,22 @@ from seesaw.utils.helpers import setup_analysis_dirs
 from seesaw.utils.loggers import get_batch_progress, setup_logger
 
 
-@hydra.main(
-    config_path=os.path.join(os.environ["ANALYSIS_ML_CONFIG_DIR"], "signal"),
-    config_name="training_config",
-    version_base=None,
-)
-def main(config: DictConfig) -> None:
-    setup_logger(config.min_logging_level)
-    setup_analysis_dirs(config, verbose=False)
-
-    classes = config.dataset_config.get("classes", None)
-
-    if classes is None:
-        raise ValueError("No classes defined in the dataset configuration.")
-
-    metadata = get_hdf5_metadata(config.dataset_config.files, resolve_path=True)
-    start_labels = metadata.get("labels", None)
-
-    if start_labels is None:
-        raise ValueError("No labels found in the metadata of the provided files!")
-
-    dataset_kwargs = {}
-    dataset_kwargs["max_label"] = max(start_labels.values())
-
-    labels, remap_labels, _ = get_classifier_labels(classes, start_labels)
-
+def calculate_weights(
+    config: DictConfig,
+    labels: dict[str, int],
+    stage: str,
+    dataset_kwargs: dict,
+    dataloader_kwargs: dict,
+    norm: bool = False,
+) -> dict[int, float]:
     inverse_labels = {v: k for k, v in labels.items()}
 
-    dataset_kwargs["remap_labels"] = remap_labels
-
-    dataloader_kwargs = dict(config.dataset_config.dataloader_kwargs)
-
-    if dataloader_kwargs.get("batch_size", None) is not None:
-        logging.warning("Batch size is set, consider setting it to null.")
-
-    norm = config.dataset_config.get("norm_class_weights", False)
-    if norm:
-        logging.info("Normalizing class weights to sum to 1.")
-
-    logging.info("[green]Initializing dataloaders...[/green]")
     hdf5_dataloader, _, _ = get_ml_hdf5_dataloader(
         name="classWeights",
         files=config.dataset_config.files,
         column_names=config.dataset_config.features,
+        stage_split_piles=config.dataset_config.stage_split_piles,
+        stage=stage,
         dataset_kwargs=dataset_kwargs,
         dataloader_kwargs=dataloader_kwargs,
     )
@@ -87,22 +60,75 @@ def main(config: DictConfig) -> None:
     num_classes = len(counts)
     logging.info(f"Total number of classes: {num_classes}.")
 
-    inv_counts_sum = sum(1 / count for count in counts.values())
+    if norm:
+        inv_weights = {label: 1 / count if count > 0 else 0.0 for label, count in counts.items()}
+        weight_sum = sum(inv_weights[label] * counts[label] for label in counts)
+        class_weights = {label: (inv_weights[label] / weight_sum) for label in counts}
 
-    class_weights = {}
-    for label, count in counts.items():
-        if count > 0:
-            if norm:
-                class_weights[label] = (1 / count) / inv_counts_sum
-            else:
-                class_weights[label] = total / (count * num_classes)
-        else:
-            logging.warning(f"Class {inverse_labels[label]} has no samples. Assigning weight of 0.")
-            class_weights[label] = 0.0
+        total_weight = sum(class_weights[label] * counts[label] for label in counts)
+        if not abs(total_weight - 1.0) < 1e-6:
+            logging.warning(f"Normalized class weights do not sum to 1.0, got {total_weight:.6f} instead.")
+    else:
+        class_weights = {label: total / (count * num_classes) if count > 0 else 0.0 for label, count in counts.items()}
 
     logging.info("Class weights:")
     for label, weight in class_weights.items():
-        logging.info(f"  {inverse_labels[label]}: {weight:.4f}")
+        if norm:
+            logging.info(f"  {inverse_labels[label]}: {weight:.3e}")
+        else:
+            logging.info(f"  {inverse_labels[label]}: {weight:.3f}")
+
+    return class_weights
+
+
+@hydra.main(
+    config_path=os.path.join(os.environ["ANALYSIS_ML_CONFIG_DIR"], "signal"),
+    config_name="training_config",
+    version_base=None,
+)
+def main(config: DictConfig) -> None:
+    setup_logger(config.min_logging_level)
+    setup_analysis_dirs(config, verbose=False)
+
+    classes = config.dataset_config.get("classes", None)
+
+    if classes is None:
+        raise ValueError("No classes defined in the dataset configuration.")
+
+    metadata = get_hdf5_metadata(config.dataset_config.files, resolve_path=True)
+    start_labels = metadata.get("labels", None)
+
+    if start_labels is None:
+        raise ValueError("No labels found in the metadata of the provided files!")
+
+    dataset_kwargs = {}
+    dataset_kwargs["max_label"] = max(start_labels.values())
+
+    labels, remap_labels, _ = get_classifier_labels(classes, start_labels)
+
+    dataset_kwargs["remap_labels"] = remap_labels
+
+    dataloader_kwargs = dict(config.dataset_config.dataloader_kwargs)
+
+    if dataloader_kwargs.get("batch_size", None) is not None:
+        logging.warning("Batch size is set, consider setting it to null.")
+
+    norm = config.dataset_config.get("norm_class_weights", False)
+    if norm:
+        logging.info("Normalizing class weights to sum to 1.")
+
+    stage_class_weights = {}
+    for stage in config.dataset_config.stage_split_piles.keys():
+        logging.info(f"[green]Starting dataloader for {stage} dataset...[/green]")
+        class_weights = calculate_weights(
+            config,
+            labels,
+            stage=stage,
+            dataset_kwargs=dataset_kwargs,
+            dataloader_kwargs=dataloader_kwargs,
+            norm=norm,
+        )
+        stage_class_weights[stage] = class_weights
 
     class_weights_dir = os.path.join(os.environ["ANALYSIS_ML_RESULTS_DIR"], "class_weights")
     os.makedirs(class_weights_dir, exist_ok=True)
@@ -112,7 +138,7 @@ def main(config: DictConfig) -> None:
 
     class_weights_file_path = os.path.join(class_weights_dir, f"{class_weights_file_name}.p")
     logging.info(f"Saving class weights to {class_weights_file_path}.")
-    dump_pickle(class_weights_file_path, class_weights)
+    dump_pickle(class_weights_file_path, stage_class_weights)
 
 
 if __name__ == "__main__":

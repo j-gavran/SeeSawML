@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 import re
@@ -518,6 +519,7 @@ def load_model_from_config(
     model_config: DictConfig | None = None,
     checkpoint_path: str | None = None,
     disable_compile: bool = False,
+    model_wrapper: Type[nn.Module] | None = None,
     **kwargs: Any,
 ) -> tuple[BaseLightningModule, str]:
     """Load a model from the configuration given load_checkpoint and model_save_path.
@@ -534,6 +536,8 @@ def load_model_from_config(
         Direct path to the checkpoint file. If provided, this will override the load_checkpoint in the config.
     disable_compile : bool, optional
         If True, disables model compilation even if it was enabled in the architecture_config, by default False.
+    model_wrapper : Type[nn.Module] | None, optional
+        A wrapper class to wrap the model after loading. If None, no wrapping is done.
     **kwargs : Any
         Additional keyword arguments to pass to torch.load.
 
@@ -547,10 +551,12 @@ def load_model_from_config(
         The loaded lightning model and the path to the checkpoint.
 
     """
+    config = copy.deepcopy(config)
+
     if model_config is None:
         model_conf = config.model_config
     else:
-        model_conf = model_config
+        model_conf = copy.deepcopy(model_config)
 
     if checkpoint_path is None:
         if model_conf.get("load_checkpoint", None) is not None:
@@ -616,7 +622,19 @@ def load_model_from_config(
     hyper_params["model_conf"] = model_conf
 
     model = model_class(**hyper_params).to(device)
+
+    if model_wrapper is not None:
+        wrap_lst = list(set(state_dict.keys()) - set(model.state_dict().keys()))
+        wrap_kwargs = {}
+
+        for key in wrap_lst:
+            wrap_kwargs[key] = state_dict[key]
+            state_dict.pop(key)
+
     model.load_state_dict(state_dict)
+
+    if model_wrapper is not None:
+        model.wrap_model(model_wrapper, **wrap_kwargs)
 
     if compile_model and not disable_compile:
         compile_kwargs = model_conf.architecture_config.get("compile_kwargs", {})

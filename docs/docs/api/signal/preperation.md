@@ -12,6 +12,6 @@
     options:
         show_root_heading: true
 
-::: seesaw.signal.dataset.qauntiles
+::: seesaw.signal.dataset.quantiles
     options:
         show_root_heading: true
