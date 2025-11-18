@@ -11,7 +11,6 @@ def sigmoid_focal_loss(
     output: torch.Tensor,
     target: torch.Tensor,
     gamma: float = 2.0,
-    pos_weight: float = 1.0,
     smoothing: float = 0.0,
     reduction: str = "mean",
 ) -> torch.Tensor:
@@ -33,19 +32,24 @@ def sigmoid_focal_loss(
         The label smoothing value, by default 0.0.
     reduction : str, optional
         The reduction method for the loss, by default "mean".
-    """
 
+    Returns
+    -------
+    torch.Tensor
+        The computed focal loss.
+
+    References
+    ----------
+    - Focal Loss for Dense Object Detection: https://arxiv.org/abs/1708.02002
+
+    """
     if smoothing > 0.0:
-        target = target - (target - 0.5).sign() * torch.rand_like(target) * smoothing
+        target = target * (1 - smoothing) + 0.5 * smoothing
 
     ce_loss = F.binary_cross_entropy_with_logits(output, target.view_as(output), reduction="none")
     p = torch.sigmoid(output)
     p_t = p * target + (1 - p) * (1 - target)
     loss = ce_loss * ((1 - p_t) ** gamma)
-
-    if pos_weight != 1:
-        weight = 1 + (pos_weight - 1) * target
-        loss = weight * loss
 
     if reduction == "mean":
         return loss.mean()
@@ -57,17 +61,26 @@ def sigmoid_focal_loss(
         raise ValueError(f"Invalid reduction method: {reduction}. Choose from 'mean', 'sum', or 'none'.")
 
 
+def _smooth_labels(num_classes: int, target: torch.Tensor, smoothing: float = 0.1) -> torch.Tensor:
+    with torch.no_grad():
+        confidence = 1.0 - smoothing
+        smoothing_value = smoothing / (num_classes - 1)
+
+        # create full distribution, then fill in true class positions
+        true_dist = torch.full((target.size(0), num_classes), smoothing_value, device=target.device)
+        true_dist.scatter_(1, target.unsqueeze(1), confidence)
+
+    return true_dist
+
+
 def multiclass_focal_loss(
     output: torch.Tensor,
     target: torch.Tensor,
     gamma: float = 2.0,
-    alpha: torch.Tensor | None = None,
     smoothing: float = 0.0,
     reduction: str = "mean",
 ) -> torch.Tensor:
-    """Focal loss for multiclass classification.
-
-    See CE definition: https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html#torch.nn.CrossEntropyLoss
+    """Multiclass focal loss for imbalanced multi-class classification.
 
     Parameters
     ----------
@@ -76,32 +89,40 @@ def multiclass_focal_loss(
     target : torch.Tensor
         The target tensor.
     gamma : float, optional
-        The gamma value for the focal loss, by default 2.
-    alpha : torch.Tensor | None, optional
-        Class weights for each class, by default None.
+        The gamma value for the focal loss, by default 2.0.
     smoothing : float, optional
         The label smoothing value, by default 0.0.
     reduction : str, optional
         The reduction method for the loss, by default "mean".
+
+    Returns
+    -------
+    torch.Tensor
+        The computed multiclass focal loss.
+
+    References
+    ----------
+    - Multi-class Focal Loss: https://github.com/AdeelH/pytorch-multi-class-focal-loss
+
     """
-
     if smoothing > 0.0:
-        num_classes = target.size(1)
-        target = (1.0 - smoothing) * target + (smoothing / num_classes)
+        target = _smooth_labels(output.size(1), target, smoothing)
 
-    log_probs = F.log_softmax(output, dim=1)  # (N, C)
-    probs = torch.exp(log_probs)  # (N, C)
-    ce_loss = -torch.sum(target * log_probs, dim=1)  # (N,)
+    # compute weighted cross entropy term: -alpha * log(pt)
+    # (alpha is already part of self.nll_loss)
+    log_p = F.log_softmax(output, dim=-1)
+    ce = F.nll_loss(log_p, target)
 
-    p_t = torch.sum(target * probs, dim=1)  # (N,)
-    focal_factor = (1.0 - p_t) ** gamma  # (N,)
-    loss = focal_factor * ce_loss  # (N,)
+    # get true class column from each row
+    all_rows = torch.arange(len(output))
+    log_pt = log_p[all_rows, target]
 
-    if alpha is not None:
-        # apply class-wise weights
-        class_weights = target * alpha.unsqueeze(0)  # (N, C)
-        sample_weights = class_weights.sum(dim=1)  # (N,)
-        loss = loss * sample_weights
+    # compute focal term: (1 - pt)^gamma
+    pt = log_pt.exp()
+    focal_term = (1 - pt) ** gamma
+
+    # the full loss: -alpha * ((1 - pt)^gamma) * log(pt)
+    loss = focal_term * ce
 
     if reduction == "mean":
         return loss.mean()
@@ -110,20 +131,15 @@ def multiclass_focal_loss(
     elif reduction == "none":
         return loss
     else:
-        raise ValueError(f"Invalid reduction: {reduction}")
+        raise ValueError(f"Invalid reduction method: {reduction}. Choose from 'mean', 'sum', or 'none'.")
 
 
 class FocalLoss(nn.Module):
-    def __init__(
-        self,
-        gamma: float = 2.0,
-        pos_weight: float = 1.0,
-        smoothing: float = 0.0,
-        reduction: str = "mean",
-    ) -> None:
+    """Wrapper for sigmoid focal loss."""
+
+    def __init__(self, gamma: float = 2.0, smoothing: float = 0.0, reduction: str = "mean") -> None:
         super().__init__()
         self.gamma = gamma
-        self.pos_weight = pos_weight
         self.smoothing = smoothing
         self.reduction = reduction
 
@@ -132,23 +148,17 @@ class FocalLoss(nn.Module):
             inputs,
             targets,
             gamma=self.gamma,
-            pos_weight=self.pos_weight,
             smoothing=self.smoothing,
             reduction=self.reduction,
         )
 
 
 class MulticlassFocalLoss(nn.Module):
-    def __init__(
-        self,
-        gamma: float = 2.0,
-        alpha: torch.Tensor | None = None,
-        smoothing: float = 0.0,
-        reduction: str = "mean",
-    ) -> None:
+    """Wrapper for multiclass focal loss."""
+
+    def __init__(self, gamma: float = 2.0, smoothing: float = 0.0, reduction: str = "mean") -> None:
         super().__init__()
         self.gamma = gamma
-        self.alpha = alpha
         self.smoothing = smoothing
         self.reduction = reduction
 
@@ -157,7 +167,6 @@ class MulticlassFocalLoss(nn.Module):
             inputs,
             targets,
             gamma=self.gamma,
-            alpha=self.alpha,
             smoothing=self.smoothing,
             reduction=self.reduction,
         )
