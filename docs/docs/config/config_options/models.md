@@ -354,3 +354,18 @@ Implements set transformer from [https://arxiv.org/abs/1810.00825](https://arxiv
     $$
     \mathrm{outer}_{b, i, j} = \mathrm{valid}_i [b, i] \land \text{valid}_j[b, j] .
     $$
+
+## Model Calibration
+
+Temperature, vector or matrix scaling (see: [https://arxiv.org/abs/1706.04599](https://arxiv.org/abs/1706.04599)) can be applied to the trained model outputs for calibration. Calibration parameters are learned on a separate validation dataset after training the main model. Calibration configuration is specified under the `calibration_config` field in the model configuration file. It requires a separate validation dataset for calibration that can be specified in the `dataset_config.stage_split_piles` as a `calib` field. The calibration config supports the following options:
+
+- `method: str`: Calibration method to use (`temperature`, `vector` or `matrix`).
+- `fit_all: bool`: Whether to fit calibration parameters on all validation data at once or in batches.
+- `set_temperature: float | None`: If provided, sets the temperature parameter to this value instead of fitting it, by default `null`.
+- `calibration_params: dict[str | Any] | None`: Additional parameters for calibration method, by default `null`.
+    - `optimizer: str`: Optimizer to use for fitting calibration parameters, `lbfgs` or `lbfgs_line_search`, by default `lbfgs`.
+    - `lr: float`: Learning rate for optimizer, by default `0.01`.
+    - `max_iter: int`: Maximum number of iterations for optimizer, by default `200`.
+    - `is_binary: bool`: Whether the task is binary classification, by default `false`. Only temperature scaling is supported for binary classification.
+
+Post-hoc calibration is applied after the main model training (given that a `calib` split exists) and does not affect the training process itself. It can be performed by setting a model checkpoint to `load_checkpoint` along with a calibration configuration described above. Calibration can be fitted using the `calibrate_signal` command after training the main model. This will produce a new checkpoint (ending with `_calib.ckpt`) with calibrated model weights that can be used for inference.

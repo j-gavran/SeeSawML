@@ -4,6 +4,10 @@
     options:
         show_root_heading: true
 
+::: seesaw.signal.training.calibrate
+    options:
+        show_root_heading: true
+
 ::: seesaw.signal.training.trackers
     options:
         show_root_heading: true

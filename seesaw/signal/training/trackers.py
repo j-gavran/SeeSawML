@@ -13,6 +13,7 @@ from torchmetrics.classification import (
     BinaryPrecisionRecallCurve,
     BinaryROC,
     MulticlassConfusionMatrix,
+    MulticlassF1Score,
 )
 
 from seesaw.models.tracker import Tracker
@@ -280,6 +281,9 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         self.tsne_pca_y_true: list[torch.Tensor] = []
         self.tsne_pca_y_pred: list[torch.Tensor] = []
 
+        self.f1_macro = MulticlassF1Score(num_classes=self.num_classes, average="macro")
+        self.f1_weighted = MulticlassF1Score(num_classes=self.num_classes, average="weighted")
+
         self.current_events = 0
 
     def _set_class_labels(self, reports: dict[str, Any]) -> None:
@@ -296,6 +300,9 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         self.tsne_pca_X.clear()
         self.tsne_pca_y_true.clear()
         self.tsne_pca_y_pred.clear()
+
+        self.f1_macro.reset()
+        self.f1_weighted.reset()
 
         self.current_events = 0
 
@@ -339,11 +346,21 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         self.accumulated_true.append(y_true)
         self.accumulated_pred.append(y_pred)
 
+        self.f1_macro.update(y_pred, y_true)
+        self.f1_weighted.update(y_pred, y_true)
+
         self.current_events += X.shape[0]
 
         return True
 
     def plot(self, stage: str) -> bool:
+        if self.validate_compute():
+            f1_macro = self.f1_macro.compute().item()
+            f1_weighted = self.f1_weighted.compute().item()
+
+            self.module.log(f"{stage}_f1_macro", f1_macro)
+            self.module.log(f"{stage}_f1_weighted", f1_weighted)
+
         if not self.validate_plot():
             return False
 
@@ -751,6 +768,9 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
         self.tsne_pca_y_true: list[torch.Tensor] = []
         self.tsne_pca_y_pred: list[torch.Tensor] = []
 
+        self.f1_macro = MulticlassF1Score(num_classes=self.num_classes, average="macro")
+        self.f1_weighted = MulticlassF1Score(num_classes=self.num_classes, average="weighted")
+
         self.current_events = 0
 
     def _set_class_labels(self, reports: dict[str, Any]) -> None:
@@ -766,6 +786,9 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
         self.tsne_pca_X.clear()
         self.tsne_pca_y_true.clear()
         self.tsne_pca_y_pred.clear()
+
+        self.f1_macro.reset()
+        self.f1_weighted.reset()
 
         self.current_events = 0
 
@@ -818,11 +841,21 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
         self.accumulated_true.append(y_true)
         self.accumulated_pred.append(y_pred)
 
+        self.f1_macro.update(y_pred, y_true)
+        self.f1_weighted.update(y_pred, y_true)
+
         self.current_events += X.shape[0]
 
         return True
 
     def plot(self, stage: str) -> bool:
+        if self.validate_compute():
+            f1_macro = self.f1_macro.compute().item()
+            f1_weighted = self.f1_weighted.compute().item()
+
+            self.module.log(f"{stage}_f1_macro", f1_macro)
+            self.module.log(f"{stage}_f1_weighted", f1_weighted)
+
         if not self.validate_plot():
             return False
 

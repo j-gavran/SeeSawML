@@ -27,6 +27,7 @@ SeeSawML provides several command-line tools to facilitate different tasks. They
 - `calculate_class_weights`: Calculate class weights for imbalanced datasets.
 - `calculate_quantiles`: Calculate feature quantiles for feature transformation.
 - `train_signal`: Train signal vs background classification model.
+- `calibrate_signal`: Perform post-hoc calibration of the trained model.
 - `onnx_signal`: Export trained model and metadata to ONNX format.
 
 !!! Example

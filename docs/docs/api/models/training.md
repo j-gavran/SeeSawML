@@ -20,6 +20,10 @@
     options:
         show_root_heading: true
 
+::: seesaw.models.calibration
+    options:
+        show_root_heading: true
+
 ::: seesaw.models.tracker
     options:
         show_root_heading: true
