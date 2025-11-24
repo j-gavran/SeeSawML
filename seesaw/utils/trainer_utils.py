@@ -38,9 +38,10 @@ def get_callbacks(
     training_conf: DictConfig,
     run_name: str,
     monitor: str = "val_loss",
+    monitor_mode: str = "min",
     tqdm_refresh_rate: int = 100,
 ) -> list[L.Callback]:
-    logging.info(f"Monitoring {monitor} for early stopping and model checkpointing.")
+    logging.info(f"Monitoring {monitor_mode} {monitor} for early stopping and model checkpointing.")
 
     file_name = run_name + "_{epoch}_{val_loss:.3f}"
 
@@ -52,7 +53,7 @@ def get_callbacks(
         LearningRateMonitor(logging_interval="step"),
         EarlyStopping(
             monitor=monitor,
-            mode="min",
+            mode=monitor_mode,
             patience=(
                 training_conf.max_epochs
                 if training_conf.early_stop_patience is None
@@ -63,7 +64,7 @@ def get_callbacks(
             dirpath=model_save_path,
             filename=file_name,
             save_weights_only=True,
-            mode="min",
+            mode=monitor_mode,
             monitor=monitor,
             save_top_k=training_conf.get("save_top_k", 3),
             save_last=True,

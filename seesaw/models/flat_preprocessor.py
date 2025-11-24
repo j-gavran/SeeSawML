@@ -37,12 +37,10 @@ class FlatNumEmbeddingModel(nn.Module):
             self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        torch.nn.init.kaiming_uniform_(self.weights, a=math.sqrt(5))
+        nn.init.normal_(self.weights, mean=0.0, std=0.02)
 
         if self.bias:
-            fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.weights)
-            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            torch.nn.init.uniform_(self.biases, -bound, bound)
+            nn.init.zeros_(self.biases)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.per_feature:
@@ -140,6 +138,36 @@ class FlatCatEmbeddingModel(nn.Module):
         return torch.stack(embedded, dim=1)
 
 
+class Attention1DPoolingReduction(nn.Module):
+    def __init__(self, embedding_dim: int, simple: bool = False) -> None:
+        super().__init__()
+        self.simple = simple
+
+        self.conv = torch.nn.Conv1d(embedding_dim, 1, kernel_size=1)
+        self.softmax = nn.Softmax(dim=-1)
+
+        if not self.simple:
+            self.bn = torch.nn.BatchNorm1d(embedding_dim)
+            self.act = nn.GELU()
+            self.dropout = nn.Dropout(0.1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (b, f, e), mask: (b, f)
+        x = rearrange(x, "b f e -> b e f")
+        a = self.conv(x)  # (b, 1, f)
+
+        # normalize over f dimension only
+        a = self.softmax(a)  # (b, 1, f)
+
+        y = torch.matmul(a, x)  # (b, 1, f) x (b, e, f) -> (b, 1, e)
+        y = torch.squeeze(y, dim=1)  # (b, e)
+
+        if not self.simple:
+            y = self.dropout(self.bn(self.act(y)))
+
+        return y
+
+
 class FlatPreprocessor(nn.Module):
     def __init__(
         self,
@@ -159,6 +187,7 @@ class FlatPreprocessor(nn.Module):
         self.mean_reduction = embedding_reduction == "mean"
         self.reshape_reduction = embedding_reduction == "reshape"
         self.conv1d_reduction = embedding_reduction == "conv1d"
+        self.attn_reduction = embedding_reduction == "attn"
         self.none_reduction = embedding_reduction == "none" or embedding_reduction is None
 
         self.has_numer, self.has_categ = False, False
@@ -179,6 +208,9 @@ class FlatPreprocessor(nn.Module):
 
         if self.conv1d_reduction:
             self.conv1d_reduction_layer = nn.Conv1d(in_channels=embedding_dim, out_channels=1, kernel_size=1)
+
+        if self.attn_reduction:
+            self.attn_reduction_layer = Attention1DPoolingReduction(embedding_dim)
 
         self._get_output_dim(numer_idx, categ_idx, embedding_dim)
 
@@ -304,6 +336,8 @@ class FlatPreprocessor(nn.Module):
         elif self.conv1d_reduction:
             x_embedded = rearrange(x_embedded, "b f e -> b e f")
             x_embedded = self.conv1d_reduction_layer(x_embedded).squeeze(dim=1)
+        elif self.attn_reduction:
+            x_embedded = self.attn_reduction_layer(x_embedded)
         elif self.none_reduction:
             pass
         else:

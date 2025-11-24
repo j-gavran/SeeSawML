@@ -139,15 +139,6 @@ def plot_multiclass_group_discriminant(
             color="C1",
         )
 
-        ax.text(
-            0.05,
-            0.05,
-            f"Signal: {group_name}",
-            transform=ax.transAxes,
-            fontsize=12,
-            verticalalignment="bottom",
-        )
-
         ax.set_xlabel(f"Group Discriminant for {group_name}", fontsize=16)
         ax.set_ylabel("Events", fontsize=16)
         ax.set_yscale("log")

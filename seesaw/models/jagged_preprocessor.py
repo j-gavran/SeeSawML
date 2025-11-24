@@ -37,18 +37,16 @@ class JaggedNumEmbeddingModel(nn.Module):
             if self.bias:
                 self.biases = nn.Parameter(torch.empty(num_numerical_types, embedding_dim))
 
+            self.reset_parameters()
+
         if self.use_layernorm:
             self.norm = nn.LayerNorm(embedding_dim)
 
-        self.reset_parameters()
-
     def reset_parameters(self) -> None:
-        torch.nn.init.kaiming_uniform_(self.weights, a=math.sqrt(5))
+        nn.init.normal_(self.weights, mean=0.0, std=0.02)
 
         if self.bias:
-            fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.weights)
-            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            torch.nn.init.uniform_(self.biases, -bound, bound)
+            nn.init.zeros_(self.biases)
 
     def forward(self, x_num: torch.Tensor) -> torch.Tensor:
         if self.per_feature:
@@ -213,6 +211,45 @@ class MaskedSequential(nn.Module):
         x = x.masked_fill(second_mask, 0.0)  # type: ignore[arg-type]
 
         return x
+
+
+class Attention2DPoolingReduction(nn.Module):
+    def __init__(self, embedding_dim: int, simple: bool = False) -> None:
+        super().__init__()
+        self.simple = simple
+
+        self.conv = nn.Conv2d(embedding_dim, 1, kernel_size=(1, 1))
+        self.softmax = nn.Softmax(dim=-1)
+
+        if not self.simple:
+            self.ln = nn.LayerNorm(embedding_dim)
+            self.act = nn.GELU()
+            self.dropout = nn.Dropout(0.1)
+
+    def forward(self, x: torch.Tensor, object_mask: torch.Tensor | None = None) -> torch.Tensor:
+        # x: (b, o, f, e), mask: (b, o)
+        x = rearrange(x, "b o f e -> b e o f")  # (b, e, o, f)
+
+        a = self.conv(x)  # (b, 1, o, f)
+
+        if object_mask is not None:
+            object_mask = rearrange(object_mask, "b o -> b 1 o 1")
+            a = a.masked_fill(object_mask, float("-inf"))
+
+        # normalize over f dimension only
+        a = self.softmax(a)  # (b, 1, o, f)
+
+        if object_mask is not None:
+            a = torch.nan_to_num(a)
+
+        y = (a * x).sum(dim=-1)  # (b, e, o, f) -> (b, e, o)
+
+        y = rearrange(y, "b e o -> b o e")
+
+        if not self.simple:
+            y = self.dropout(self.ln(self.act(y)))
+
+        return y
 
 
 class JaggedPreprocessor(nn.Module):
@@ -483,6 +520,8 @@ class JaggedPreprocessor(nn.Module):
                         second_mask_rearrange=Rearrange("b o -> b o 1") if not self.use_ple else None,
                     ),
                 )
+            elif reduction == "attn":
+                projections.append(Attention2DPoolingReduction(embedding_dim))
             else:
                 raise ValueError(f"Unknown reduction method: {reduction}!")
 

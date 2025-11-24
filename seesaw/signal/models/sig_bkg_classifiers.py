@@ -229,6 +229,14 @@ class BaseSigBkgNNClassifier:
         if self.tracker:
             self.tracker.plot(stage="val")
 
+    def get_accuracy(self, y_hat: torch.Tensor, batch: FullWeightedBatchType) -> torch.Tensor:
+        if self.binary_acc is not None:
+            return self.binary_acc(y_hat.squeeze(1), batch[0]["events"][1])
+        elif self.multi_acc is not None:
+            return self.multi_acc(y_hat, batch[0]["events"][1])
+        else:
+            raise RuntimeError("No accuracy metric defined for this model!")
+
 
 class SigBkgEventsNNClassifier(BaseSigBkgNNClassifier, BaseEventsLightningModule):
     def __init__(
@@ -256,6 +264,9 @@ class SigBkgEventsNNClassifier(BaseSigBkgNNClassifier, BaseEventsLightningModule
             use_class_weights=use_class_weights,
         )
 
+        if use_class_weights and self.tracker is not None:
+            self.tracker.add_class_weights(self.class_weights)
+
     def forward(self, X: torch.Tensor, use_sigmoid: bool = False, use_softmax: bool = False) -> torch.Tensor:
         if self.training:
             return self.model(X)
@@ -279,14 +290,6 @@ class SigBkgEventsNNClassifier(BaseSigBkgNNClassifier, BaseEventsLightningModule
             self.log(f"{stage}_dcorr", self.dcorr, batch_size=self.get_batch_size(batch))
 
         return loss, y_hat
-
-    def get_accuracy(self, y_hat: torch.Tensor, batch: WeightedBatchType) -> torch.Tensor:
-        if self.binary_acc is not None:
-            return self.binary_acc(y_hat.squeeze(1), batch[1])
-        elif self.multi_acc is not None:
-            return self.multi_acc(y_hat, batch[1])
-        else:
-            raise RuntimeError("No accuracy metric defined for this model!")
 
 
 class SigBkgFullNNClassifier(BaseSigBkgNNClassifier, BaseFullLightningModule):
@@ -314,6 +317,9 @@ class SigBkgFullNNClassifier(BaseSigBkgNNClassifier, BaseFullLightningModule):
             use_mc_weights=use_mc_weights,
             use_class_weights=use_class_weights,
         )
+
+        if use_class_weights and self.tracker is not None:
+            self.tracker.add_class_weights(self.class_weights)
 
     def forward(
         self,
@@ -356,11 +362,3 @@ class SigBkgFullNNClassifier(BaseSigBkgNNClassifier, BaseFullLightningModule):
             self.log(f"{stage}_dcorr", self.dcorr, batch_size=self.get_batch_size(batch))
 
         return loss, y_hat
-
-    def get_accuracy(self, y_hat: torch.Tensor, batch: FullWeightedBatchType) -> torch.Tensor:
-        if self.binary_acc is not None:
-            return self.binary_acc(y_hat.squeeze(1), batch[0]["events"][1])
-        elif self.multi_acc is not None:
-            return self.multi_acc(y_hat, batch[0]["events"][1])
-        else:
-            raise RuntimeError("No accuracy metric defined for this model!")

@@ -281,8 +281,7 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         self.tsne_pca_y_true: list[torch.Tensor] = []
         self.tsne_pca_y_pred: list[torch.Tensor] = []
 
-        self.f1_macro = MulticlassF1Score(num_classes=self.num_classes, average="macro")
-        self.f1_weighted = MulticlassF1Score(num_classes=self.num_classes, average="weighted")
+        self.f1 = MulticlassF1Score(num_classes=self.num_classes, average="none")
 
         self.current_events = 0
 
@@ -301,8 +300,7 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         self.tsne_pca_y_true.clear()
         self.tsne_pca_y_pred.clear()
 
-        self.f1_macro.reset()
-        self.f1_weighted.reset()
+        self.f1.reset()
 
         self.current_events = 0
 
@@ -346,8 +344,7 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         self.accumulated_true.append(y_true)
         self.accumulated_pred.append(y_pred)
 
-        self.f1_macro.update(y_pred, y_true)
-        self.f1_weighted.update(y_pred, y_true)
+        self.f1.update(y_pred, y_true)
 
         self.current_events += X.shape[0]
 
@@ -355,11 +352,16 @@ class SigBkgMulticlassClassifierTracker(Tracker):
 
     def plot(self, stage: str) -> bool:
         if self.validate_compute():
-            f1_macro = self.f1_macro.compute().item()
-            f1_weighted = self.f1_weighted.compute().item()
+            f1 = self.f1.compute()
 
-            self.module.log(f"{stage}_f1_macro", f1_macro)
-            self.module.log(f"{stage}_f1_weighted", f1_weighted)
+            if self.has_class_weights:
+                weights = self.get_class_weights_tensor(stage).to(f1.device)
+            else:
+                weights = torch.ones_like(f1)
+
+            weighted_f1 = torch.mean(f1 * weights).item()
+
+            self.module.log(f"{stage}_F1", weighted_f1)
 
         if not self.validate_plot():
             return False
@@ -768,8 +770,7 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
         self.tsne_pca_y_true: list[torch.Tensor] = []
         self.tsne_pca_y_pred: list[torch.Tensor] = []
 
-        self.f1_macro = MulticlassF1Score(num_classes=self.num_classes, average="macro")
-        self.f1_weighted = MulticlassF1Score(num_classes=self.num_classes, average="weighted")
+        self.f1 = MulticlassF1Score(num_classes=self.num_classes, average="none")
 
         self.current_events = 0
 
@@ -787,8 +788,7 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
         self.tsne_pca_y_true.clear()
         self.tsne_pca_y_pred.clear()
 
-        self.f1_macro.reset()
-        self.f1_weighted.reset()
+        self.f1.reset()
 
         self.current_events = 0
 
@@ -841,8 +841,7 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
         self.accumulated_true.append(y_true)
         self.accumulated_pred.append(y_pred)
 
-        self.f1_macro.update(y_pred, y_true)
-        self.f1_weighted.update(y_pred, y_true)
+        self.f1.update(y_pred, y_true)
 
         self.current_events += X.shape[0]
 
@@ -850,11 +849,16 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
 
     def plot(self, stage: str) -> bool:
         if self.validate_compute():
-            f1_macro = self.f1_macro.compute().item()
-            f1_weighted = self.f1_weighted.compute().item()
+            f1 = self.f1.compute()
 
-            self.module.log(f"{stage}_f1_macro", f1_macro)
-            self.module.log(f"{stage}_f1_weighted", f1_weighted)
+            if self.has_class_weights:
+                weights = self.get_class_weights_tensor(stage).to(f1.device)
+            else:
+                weights = torch.ones_like(f1)
+
+            weighted_f1 = torch.mean(f1 * weights).item()
+
+            self.module.log(f"{stage}_F1", weighted_f1)
 
         if not self.validate_plot():
             return False

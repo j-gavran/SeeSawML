@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import lightning as L
+import torch
 from omegaconf import DictConfig
 
 
@@ -40,6 +41,8 @@ class Tracker(ABC):
         self.base_dir = f"{self.tracker_path}/{self.experiment_conf['run_name']}/"
 
         self._create_plotting_dirs()
+
+        self._class_weights: dict[str, dict[int, float]] | None = None
 
     def __call__(self, module: L.LightningModule) -> Tracker:
         self.module = module
@@ -106,3 +109,35 @@ class Tracker(ABC):
         # For example, if you have lists or tensors to accumulate results, clear them.
         # self.accumulated_results.clear()  # Example placeholder
         pass
+
+    def add_class_weights(self, class_weights: dict[str, dict[int, float]]) -> None:
+        self._class_weights = class_weights
+
+    @property
+    def has_class_weights(self) -> bool:
+        return True if self._class_weights is not None else False
+
+    @property
+    def class_weights_dct(self) -> dict[str, dict[int, float]]:
+        if self._class_weights is None:
+            raise ValueError("Class weights have not been set. Please use 'add_class_weights' to set them.")
+        return self._class_weights
+
+    def get_class_weights_tensor(self, stage: str, norm: bool = False) -> torch.Tensor:
+        class_weights = self.class_weights_dct[stage]
+        weights_tensor = torch.tensor([class_weights[i] for i in sorted(class_weights.keys())], dtype=torch.float32)
+
+        if norm:
+            weights_tensor = weights_tensor / torch.sum(weights_tensor)
+
+        return weights_tensor
+
+    def get_class_weights_labels(self, labels: torch.Tensor, stage: str) -> torch.Tensor:
+        _class_weights = self.class_weights_dct[stage]
+
+        class_weights = torch.zeros_like(labels, dtype=torch.float32)
+
+        for class_label, class_weight in _class_weights.items():
+            class_weights[labels == class_label] = class_weight
+
+        return class_weights

@@ -115,6 +115,7 @@ def _build_events_network(
             ple_config["dropout"] = embeddings_ple_config.get("dropout", 0.0)
             ple_config["layernorm"] = embeddings_ple_config.get("layernorm", False)
             ple_config["ple_file_hash_str"] = str(dataset_conf.files) + str(sorted(dataset_conf.features)) + str(n_bins)
+            embedding_config.pop("ple")
         else:
             ple_config = None
     else:
@@ -343,6 +344,7 @@ def _build_jagged_network(
             ple_config["dropout"] = embeddings_ple_config.get("dropout", 0.0)
             ple_config["layernorm"] = embeddings_ple_config.get("layernorm", False)
             ple_config["ple_file_hash_str"] = str(dataset_conf.files) + str(sorted(dataset_conf.features)) + str(n_bins)
+            embedding_config.pop("ple")
         else:
             ple_config = None
     else:

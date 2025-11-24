@@ -183,7 +183,6 @@ class BaseEventsLightningModule(BaseLightningModule):
     def get_loss(self, batch: WeightedBatchType, stage: str | None = None) -> tuple[torch.Tensor, torch.Tensor | None]:
         pass
 
-    @abstractmethod
     def get_accuracy(self, y_hat: torch.Tensor, batch: WeightedBatchType) -> torch.Tensor | None:
         return None
 
@@ -242,7 +241,6 @@ class BaseFullLightningModule(BaseLightningModule):
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         pass
 
-    @abstractmethod
     def get_accuracy(self, y_hat: torch.Tensor, batch: FullWeightedBatchType) -> torch.Tensor | None:
         return None
 
