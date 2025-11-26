@@ -17,8 +17,9 @@ VALID_COMMANDS = {
     "convert_signal": "seesaw.signal.dataset.hdf5_converter",
     "scale_signal": "seesaw.signal.dataset.dataset_scaling",
     "calculate_class_weights": "seesaw.signal.dataset.class_weights.py",
-    "calculate_quantiles": "seesaw.signal.dataset.qauntiles",
+    "calculate_quantiles": "seesaw.signal.dataset.quantiles",
     "train_signal": "seesaw.signal.training.sig_bkg_trainer",
+    "calibrate_signal": "seesaw.signal.training.calibrate",
     "onnx_signal": "seesaw.signal.models.model_to_onnx",
 }
 
