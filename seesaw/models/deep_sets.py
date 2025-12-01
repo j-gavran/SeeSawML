@@ -176,6 +176,7 @@ class JaggedDeepsets(nn.Module):
         dropout: float = 0.0,
         mean_pooling: bool = True,
         embedding_config_dct: dict[str, Any] | None = None,
+        add_particle_types: bool = False,
         flat_model: nn.Module | None = None,
         flat_fuse: dict[str, Any] | None = None,
         **act_kwargs,
@@ -213,6 +214,7 @@ class JaggedDeepsets(nn.Module):
             conv1d_embedding=embedding_config_dct.get("conv1d_embedding", False),
             post_embeddings_dct=embedding_config_dct.get("post_embeddings_dct", None),
             ple_dct=embedding_config_dct.get("ple_config", None),
+            add_particle_types=add_particle_types,
         )
 
         self.phi = _setup_encoder(encoder_layers_dim, act, use_batchnorm, dropout, **act_kwargs)

@@ -1,5 +1,4 @@
 import logging
-import math
 from typing import Any
 
 import numpy as np
@@ -266,12 +265,17 @@ class JaggedPreprocessor(nn.Module):
         conv1d_embedding: bool = False,
         post_embeddings_dct: dict[str, Any] | None = None,
         ple_dct: dict[str, Any] | None = None,
+        add_particle_types: bool = False,
     ) -> None:
         super().__init__()
         if conv1d_embedding and ple_dct is not None:
             raise ValueError("conv1d_embedding and ple_dct cannot be used together!")
 
         self.conv1d_embedding = conv1d_embedding
+        self.add_particle_types = add_particle_types
+
+        if add_particle_types:
+            embedding_dim = embedding_dim - 1  # reserve 1 dim for particle type embedding
 
         self.use_ple = True if ple_dct is not None else False
 
@@ -288,6 +292,7 @@ class JaggedPreprocessor(nn.Module):
         self._setup_embeddings(embedding_dim, numer_idx, categories, numer_feature_wise_linear, ple_dct=ple_dct)
 
         self._setup_projections(embedding_dim, numer_idx, categ_idx, reduction)
+        self._setup_particle_types(add_particle_types, categories)
 
         self._setup_post_embeddings(embedding_dim, post_embeddings_dct)
 
@@ -465,6 +470,9 @@ class JaggedPreprocessor(nn.Module):
     def _setup_projections(
         self, embedding_dim: int, numer_idx: dict[str, np.ndarray], categ_idx: dict[str, np.ndarray], reduction: str
     ) -> None:
+        if self.add_particle_types:
+            embedding_dim = embedding_dim + 1
+
         projections: list[nn.Module] = []
 
         self.masked_mean = False
@@ -527,6 +535,24 @@ class JaggedPreprocessor(nn.Module):
 
         self.projections = nn.ModuleList(projections)
 
+    def _setup_particle_types(self, add_particle_types: bool, categories: dict[str, np.ndarray]) -> None:
+        if not add_particle_types:
+            return None
+
+        logging.info("Adding particle type tokens to jagged objects.")
+
+        if "events" in categories:
+            num_particle_types = len(categories) - 1
+        else:
+            num_particle_types = len(categories)
+
+        particle_type_tokens = []
+        for _ in range(num_particle_types):
+            token = nn.Parameter(torch.randn(1), requires_grad=True)
+            particle_type_tokens.append(token)
+
+        self.particle_type_tokens = nn.ParameterList(particle_type_tokens)
+
     def forward(self, *Xs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         numer_jagged_embeddings: list[torch.Tensor] = []
         numer_jagged_masks: list[torch.Tensor] = []
@@ -581,6 +607,16 @@ class JaggedPreprocessor(nn.Module):
 
             jagged_cat = torch.cat((numer_embed, categ_embed), dim=2)
             jagged_mask = numer_mask & categ_mask
+
+            if self.add_particle_types:
+                particle_type_token = self.particle_type_tokens[i]
+                b, o, f, _ = jagged_cat.shape
+                particle_type_embedding = particle_type_token.expand(b, o, f, 1)
+
+                particle_type_mask = rearrange(jagged_mask, "b o -> b o 1 1")
+                particle_type_embedding = particle_type_embedding.masked_fill(particle_type_mask, 0.0)
+
+                jagged_cat = torch.cat((jagged_cat, particle_type_embedding), dim=-1)
 
             if self.masked_mean:
                 proj_jagged_mask = rearrange(jagged_mask, "b o -> b o 1 1") if not self.use_ple else None

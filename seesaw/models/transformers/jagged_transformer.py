@@ -86,6 +86,7 @@ class JaggedTransformer(nn.Module):
         embedding_config_dct: dict[str, Any] | None = None,
         set_transform_events: bool = False,
         use_setnorm: bool = True,
+        add_particle_types: bool = False,
         flat_model: nn.Module | None = None,
         flat_fuse: dict[str, Any] | None = None,
         use_flash: bool = False,
@@ -136,6 +137,7 @@ class JaggedTransformer(nn.Module):
             conv1d_embedding=embedding_config_dct.get("conv1d_embedding", False),
             post_embeddings_dct=embedding_config_dct.get("post_embeddings_dct", None),
             ple_dct=embedding_config_dct.get("ple_config", None),
+            add_particle_types=add_particle_types,
         )
 
         if self.set_transform_events:
