@@ -10,7 +10,7 @@ from sklearn.metrics import auc, roc_curve
 
 from seesaw.signal.utils import multiclass_discriminant
 from seesaw.utils.labels import get_label
-from seesaw.utils.plots_utils import atlas_label, iqr_remove_outliers, iqr_remove_outliers_mask, save_plot
+from seesaw.utils.plots_utils import atlas_label, save_plot
 
 
 @handle_plot_exception
@@ -132,16 +132,6 @@ def plot_binary_model_score(
     score_bkg = score[labels == bkg_label]
 
     if "sigmoid" not in save_postfix:
-        sig_mask = iqr_remove_outliers_mask(score_sig)
-        bkg_mask = iqr_remove_outliers_mask(score_bkg)
-
-        score_sig = score_sig[sig_mask]
-        score_bkg = score_bkg[bkg_mask]
-
-        if sig_weights is not None and bkg_weights is not None:
-            sig_weights = sig_weights[sig_mask]
-            bkg_weights = bkg_weights[bkg_mask]
-
         x_min = min(np.min(score_sig), np.min(score_bkg))
         x_max = max(np.max(score_sig), np.max(score_bkg))
     else:
@@ -241,12 +231,15 @@ def plot_multiclass_confusion_matrix(cm: np.ndarray, labels: dict[str, int], sav
 @handle_plot_exception
 def plot_multiclass_model_score(
     scores: np.ndarray,
-    labels: dict[str, int],
+    labels: dict[str, int] | None,
     save_path: str,
     save_postfix: str,
     nbins: int = 100,
     is_softmax: bool = True,
 ) -> None:
+    if labels is None:
+        raise ValueError("Labels dictionary must be provided for multiclass model score plotting.")
+
     labels_lst = list(labels.keys())
 
     if is_softmax:
@@ -260,7 +253,7 @@ def plot_multiclass_model_score(
         label = get_label(label).latex_name
 
         if not is_softmax:
-            score = iqr_remove_outliers(scores[:, i])
+            score = scores[:, i]
             bins = list(np.linspace(np.min(score), np.max(score), nbins))
         else:
             score = scores[:, i]
@@ -431,7 +424,6 @@ def plot_multiclass_discriminant(
         else:
             c = colors[i - 1]
 
-        ds[i] = iqr_remove_outliers(ds[i])
         bins = np.linspace(min(ds[i]), max(ds[i]), nbins)
 
         ax.hist(
@@ -554,9 +546,6 @@ def plot_multiclass_discriminant_one_vs_rest(
         background_scores = class_scores[background_mask]
 
         fig, ax = plt.subplots(figsize=(7.0, 6.25))
-
-        signal_scores = iqr_remove_outliers(signal_scores)
-        background_scores = iqr_remove_outliers(background_scores)
 
         signal_min_max = (min(signal_scores), max(signal_scores))
         background_min_max = (min(background_scores), max(background_scores))

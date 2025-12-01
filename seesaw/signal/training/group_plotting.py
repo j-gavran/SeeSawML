@@ -7,7 +7,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from sklearn.metrics import auc, roc_curve
 
 from seesaw.signal.utils import multiclass_group_discriminant
-from seesaw.utils.plots_utils import atlas_label, iqr_remove_outliers, save_plot
+from seesaw.utils.plots_utils import atlas_label, save_plot
 
 
 @handle_plot_exception
@@ -107,9 +107,6 @@ def plot_multiclass_group_discriminant(
         background_scores = class_scores[background_mask]
 
         fig, ax = plt.subplots(figsize=(7, 6.25))
-
-        signal_scores = iqr_remove_outliers(signal_scores) if signal_scores.size else signal_scores
-        background_scores = iqr_remove_outliers(background_scores) if background_scores.size else background_scores
 
         if signal_scores.size and background_scores.size:
             signal_min_max = (min(signal_scores), max(signal_scores))
@@ -241,7 +238,7 @@ def plot_group_one_vs_rest_roc(
     ax.set_title(f"ROC Curve (OVR: {group_name})", loc="right")
     ax.set_xlabel("False Positive Rate")
     ax.set_ylabel("True Positive Rate")
-    ax.legend()
+    ax.legend(loc="lower right", fontsize=12)
     atlas_label(ax, loc=0, fontsize=14)
     save_plot(fig, f"{save_path}/custom_groups/multiclass_group_roc_curve_{group_name}_{save_postfix}.pdf")
 
@@ -271,8 +268,6 @@ def plot_group_one_vs_rest_discriminant(
     signal_scores = disc[is_signal]
     background_scores = disc[~is_signal]
 
-    signal_scores = iqr_remove_outliers(signal_scores)
-    background_scores = iqr_remove_outliers(background_scores)
     bins = np.linspace(
         min(signal_scores.min(), background_scores.min()), max(signal_scores.max(), background_scores.max()), nbins
     )

@@ -234,12 +234,7 @@ def plot_signal_hists(
     progress.stop()
 
 
-def dump_hists_to_csv(
-    hs: dict[str, dict[str, list[hist.Hist]]],
-    labels: dict[str, int],
-    save_dir: str,
-    save_name: str,
-) -> None:
+def dump_hists_to_csv(hs: dict[str, dict[str, list[hist.Hist]]], save_dir: str, save_name: str) -> None:
     os.makedirs(save_dir, exist_ok=True)
 
     # variable -> label -> list[Hist]
@@ -385,14 +380,12 @@ def run_plot_signal(
     model: torch.nn.Module | None = None,
     model_cut: tuple[float, float] = (0.5, 1.0),
     ml_mass: list[float] | None = None,
-    use_discriminant: bool = False,
     classes: ListConfig | None = None,
     force_is_multiclass: bool = False,
     plot_only_ml: bool = False,
     plot_both_ml_and_disc: bool = False,
     dump_csv: bool = False,
     csv_dir: str | None = None,
-    custom_groups: dict[str, list[str]] | None = None,
 ) -> None:
     if dataset_kwargs is None:
         dataset_kwargs = {}
@@ -710,7 +703,7 @@ def run_plot_signal(
         # Dump per-event values used to build histograms
         dump_score_values_to_csv(score_values, out_dir, save_name)
         # Also dump histogram bin contents (existing behavior)
-        dump_hists_to_csv(hs_labels, labels, out_dir, save_name)
+        dump_hists_to_csv(hs_labels, out_dir, save_name)
 
 
 @hydra.main(
@@ -721,6 +714,8 @@ def run_plot_signal(
 def main(config: DictConfig):
     setup_logger(config.min_logging_level)
     setup_analysis_dirs(config, verbose=False)
+
+    torch.set_float32_matmul_precision(config.experiment_config.get("float32_matmul_precision", "high"))
 
     signal_plot_conf = config.plotting_config.signal_plot
 
@@ -739,7 +734,7 @@ def main(config: DictConfig):
         logging.info("Using feature scaling.")
         dataset_kwargs["numer_scaler_type"] = config.dataset_config.feature_scaling.get("numer_scaler_type", None)
         dataset_kwargs["categ_scaler_type"] = config.dataset_config.feature_scaling.get("categ_scaler_type", None)
-        dataset_kwargs["scaler_path"] = config.dataset_config.feature_scaling.get("scaler_path", None)
+        dataset_kwargs["scaler_path"] = config.dataset_config.feature_scaling.get("save_path", None)
         dataset_kwargs["scalers_extra_hash"] = str(config.dataset_config.files)
 
     if signal_plot_conf.rescale:
@@ -748,7 +743,7 @@ def main(config: DictConfig):
     if signal_plot_conf.closure:
         logging.info("[green]Performing classification closure test.")
         device = "cuda" if config.experiment_config.accelerator == "gpu" else "cpu"
-        model, load_checkpoint = load_sig_bkg_model(config, events_only=True, map_location=device)
+        model, load_checkpoint = load_sig_bkg_model(config, events_only=True)
         logging.info(f"Loaded model {os.path.basename(load_checkpoint)} on {device}.")
     else:
         model = None
@@ -775,14 +770,12 @@ def main(config: DictConfig):
         model=model,
         model_cut=closure_cut,
         ml_mass=ml_mass,
-        use_discriminant=signal_plot_conf.disc,
         classes=config.dataset_config.get("classes", None),
         force_is_multiclass=signal_plot_conf.get("is_multiclass", False),
         plot_only_ml=signal_plot_conf.get("plot_only_ml", False),
         plot_both_ml_and_disc=signal_plot_conf.get("plot_both_ml_and_disc", False),
         dump_csv=signal_plot_conf.get("dump_csv", False),
         csv_dir=signal_plot_conf.get("csv_dir", None),
-        custom_groups=config.dataset_config.get("custom_groups", None),
     )
 
 

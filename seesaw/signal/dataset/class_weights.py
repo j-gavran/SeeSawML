@@ -118,7 +118,11 @@ def main(config: DictConfig) -> None:
         logging.info("Normalizing class weights to sum to 1.")
 
     stage_class_weights = {}
-    for stage in config.dataset_config.stage_split_piles.keys():
+    for stage, stage_piles in config.dataset_config.stage_split_piles.items():
+        if stage_piles == 0:
+            logging.info(f"[yellow]Skipping {stage} dataset as no piles are assigned.[/yellow]")
+            continue
+
         logging.info(f"[green]Starting dataloader for {stage} dataset...[/green]")
         class_weights = calculate_weights(
             config,

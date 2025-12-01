@@ -58,6 +58,7 @@ Besides the mentioned top level fields, there are some common configuration opti
 - `early_stop_patience: int | None`: Number of epochs with no improvement after which training will be stopped. If `null`, early stopping is disabled.
 - `gradient_clip_val: float | None`: Maximum norm for gradient clipping. If `null`, gradient clipping is disabled.
 - `monitor: str`: Metric to monitor for early stopping and learning rate scheduling, by default `val_loss`.
+- `monitor_mode: str`: Mode for monitoring the metric (`min` or `max`), by default `min`.
 - `save_top_k: int`: Number of best models to save based on the monitored metric.
 - `log_train_memory: bool`: Whether to log memory usage during training, by default `false`.
 - `model_save_path: str | None`: Path where to save the model checkpoints. If `null`, defaults to `ANALYSIS_ML_MODELS_DIR/checkpoints`.
@@ -121,7 +122,7 @@ Embeddings configuration is specified under the `architecture_config` and `archi
 !!! Tip
     Quantile bins for piecewise linear encoding can be precomputed using the `calculate_quantiles` command before training the model. It can be enabled by setting the number of bins in `dataset_config.ple_bins`. It is recommended to use `minmax` scaler when using quantile bins.
 
-- `reduction: str`: Reduction method for combining multiple feature embeddings. For flat embeddings: `mean`, `reshape`, `conv1d` or `none`, by default `mean`. For jagged embeddings: `mean`, `reshape`, or `conv2d`, by default `mean`.
+- `reduction: str`: Reduction method for combining multiple feature embeddings. For flat embeddings: `mean`, `reshape`, `conv1d`, `attn` or `none`, by default `mean`. For jagged embeddings: `mean`, `reshape`, `conv2d` or `attn`, by default `mean`.
 - `numer_feature_wise_linear: bool`: Whether to use feature-wise linear layers for numerical feature embeddings, by default `false`.
 - `ple: bool | None | dict[str, Any]`: Configuration for piecewise linear encoding (PLE) for numerical features, by default `null`, which means PLE is disabled.
     - If set to `true`, uses default PLE configuration with.

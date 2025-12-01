@@ -90,7 +90,7 @@ def _build_events_network(
     else:
         embedding_config = {}
 
-    if "ple" in embedding_config:
+    if embedding_config.get("ple", None) is not None:
         n_bins = dataset_conf.get("ple_bins", None)
 
         if n_bins is None:
@@ -319,7 +319,7 @@ def _build_jagged_network(
     else:
         embedding_config = {}
 
-    if "ple" in embedding_config:
+    if embedding_config.get("ple", None) is not None:
         n_bins = dataset_conf.get("ple_bins", None)
 
         if n_bins is None:
@@ -466,13 +466,6 @@ def build_network(
             logging.info("[yellow]Using parametrized neural network.")
             break
 
-    categ_columns_dct, numer_columns_idx_dct, categ_columns_idx_dct = {}, {}, {}
-
-    for dataset_name in selection.keys():
-        categ_columns_dct[dataset_name] = selection[dataset_name].categ_columns
-        numer_columns_idx_dct[dataset_name] = selection[dataset_name].offset_numer_columns_idx
-        categ_columns_idx_dct[dataset_name] = selection[dataset_name].offset_categ_columns_idx
-
     if len(selection) == 1 and "events" in selection:
         events_only = True
     else:
@@ -545,7 +538,8 @@ def load_model_from_config(
 
     Note
     ----
-    Make sure to have valid scaler objects saved in the scaler path specified in the configuration.
+    - Make sure to have valid scaler objects saved in the scaler path specified in the configuration.
+    - Model is loaded onto the device specified in experiment_config.accelerator and put in eval mode.
 
     Returns
     -------
@@ -612,10 +606,12 @@ def load_model_from_config(
             f"Loaded: {loaded_categ_scaler_type}, Current: {config_categ_scaler_type}"
         )
 
-    compile_model = hyper_params["model_conf"]["architecture_config"].get("compile", False)
-
+    # disable compilation inside build_network function
     with open_dict(hyper_params["model_conf"]):
         hyper_params["model_conf"]["architecture_config"]["compile"] = False
+
+    compile_model = model_conf.architecture_config.get("compile", False)
+    compile_kwargs = model_conf.architecture_config.get("compile_kwargs", {})
 
     with open_dict(model_conf):
         model_conf["architecture_config"] = hyper_params["model_conf"]["architecture_config"]
@@ -634,15 +630,14 @@ def load_model_from_config(
             state_dict.pop(key)
 
     model.load_state_dict(state_dict)
+    model.eval()
 
     if model_wrapper is not None:
         model.wrap_model(model_wrapper, **wrap_kwargs)
+        model.eval()
 
     if compile_model and not disable_compile:
-        compile_kwargs = model_conf.architecture_config.get("compile_kwargs", {})
         logging.info(f"Compiling the model with torch.compile and args: {compile_kwargs}")
         model.compile(**compile_kwargs)
-
-    model.eval()
 
     return model, load_checkpoint
