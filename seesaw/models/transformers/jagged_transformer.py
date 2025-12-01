@@ -89,7 +89,7 @@ class JaggedTransformer(nn.Module):
         add_particle_types: bool = False,
         flat_model: nn.Module | None = None,
         flat_fuse: dict[str, Any] | None = None,
-        use_flash: bool = False,
+        sdp_backend: dict[str, bool] | None = None,
         debug_masks: bool = False,
     ) -> None:
         super().__init__()
@@ -168,7 +168,7 @@ class JaggedTransformer(nn.Module):
                 disable_decoder_masking=True,
                 use_predict=False,
                 use_setnorm=use_setnorm,
-                use_flash=use_flash,
+                sdp_backend=sdp_backend,
             )
 
             self.to_set_events_proj = nn.Sequential(
@@ -195,7 +195,7 @@ class JaggedTransformer(nn.Module):
             disable_decoder_masking=self.disable_decoder_masking,
             use_predict=True if not self.set_transform_events else False,
             use_setnorm=use_setnorm,
-            use_flash=use_flash,
+            sdp_backend=sdp_backend,
         )
 
         self.set_decoder: nn.Module
@@ -216,7 +216,7 @@ class JaggedTransformer(nn.Module):
                 depth_predict=set_predictor_dct.get("depth", 1),
                 pool_predict=set_predictor_dct.get("mean_pooling", False),
                 disable_decoder_masking=self.disable_decoder_masking,
-                use_flash=use_flash,
+                sdp_backend=sdp_backend,
             )
 
         if self.set_transform_events and self.num_seeds == 1:

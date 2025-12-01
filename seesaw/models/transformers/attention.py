@@ -11,45 +11,50 @@ from seesaw.models.transformers.ff_blocks import GeGLUNet
 
 
 class Attend(nn.Module):
-    def __init__(
-        self, heads: int = 8, dropout_p: float = 0.1, use_flash: bool = False, sdp_kwargs: dict[str, bool] | None = None
-    ) -> None:
+    def __init__(self, heads: int = 8, dropout_p: float = 0.1, sdp_backend: dict[str, bool] | None = None) -> None:
         super().__init__()
         self.heads = heads
         self.dropout_p = dropout_p
-        self.use_flash = use_flash
 
-        if self.use_flash:
-            self._setup_flash_attention(sdp_kwargs)
+        if sdp_backend is not None:
+            self.use_sdp = True
+            self._setup_sdp_attention(sdp_backend)
+        else:
+            self.use_sdp = False
 
         self.softmax = nn.Softmax(dim=-1)
 
         if self.dropout_p > 0.0:
             self.dropout = nn.Dropout(dropout_p)
 
-    def _setup_flash_attention(self, sdp_kwargs: dict[str, bool] | None = None) -> None:
-        if sdp_kwargs is None:
-            use_sdp_kwargs = {
-                "enable_flash": True,
-                "enable_math": True,
-                "enable_mem_efficient": True,
-                "enable_cudnn": True,
-            }
-        else:
-            use_sdp_kwargs = sdp_kwargs
-
+    def _setup_sdp_attention(self, sdp_backend: dict[str, bool]) -> None:
         str_to_backend = {
+            "enable_math": SDPBackend.MATH,
             "enable_flash": SDPBackend.FLASH_ATTENTION,
             "enable_mem_efficient": SDPBackend.EFFICIENT_ATTENTION,
-            "enable_math": SDPBackend.MATH,
             "enable_cudnn": SDPBackend.CUDNN_ATTENTION,
         }
 
-        sdpa_backends = [str_to_backend[enable_str] for enable_str, enable in use_sdp_kwargs.items() if enable]
+        used_sdp_backend: dict[str, bool] = {}
 
-        self.sdp_context_manager = partial(torch.nn.attention.sdpa_kernel, sdpa_backends)
+        for key, is_used in sdp_backend.items():
+            if key not in str_to_backend:
+                raise ValueError(f"Invalid key '{key}' in sdp_backend. Valid keys are: {list(str_to_backend.keys())}.")
 
-    def flash_attention(
+            used_sdp_backend[key] = is_used
+
+        for k in str_to_backend.keys():
+            if k not in used_sdp_backend:
+                used_sdp_backend[k] = False
+
+        if not any(used_sdp_backend.values()):
+            raise ValueError("At least one SDP backend must be enabled in sdp_backend!")
+
+        sdpa_backends = [str_to_backend[enable_str] for enable_str, enable in used_sdp_backend.items() if enable]
+
+        self.sdp_context_manager = partial(torch.nn.attention.sdpa_kernel, backends=sdpa_backends)
+
+    def sdp_attention(
         self,
         q: torch.Tensor,
         k: torch.Tensor,
@@ -99,8 +104,8 @@ class Attend(nn.Module):
     ) -> torch.Tensor:
         q, k, v = map(lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.heads), (q, k, v))
 
-        if self.use_flash:
-            out = self.flash_attention(q, k, v, scale, mask)
+        if self.use_sdp:
+            out = self.sdp_attention(q, k, v, scale, mask)
         else:
             out = self.attention(q, k, v, scale, mask)
 
@@ -115,7 +120,7 @@ class Attention(nn.Module):
         dim_head: int = 64,
         dropout: float = 0.1,
         pre_norm: bool = True,
-        use_flash: bool = False,
+        sdp_backend: dict[str, bool] | None = None,
     ) -> None:
         super().__init__()
         self.heads = heads
@@ -131,7 +136,7 @@ class Attention(nn.Module):
         self.to_q = nn.Linear(dim, inner_dim, bias=False)
         self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
 
-        self.attend = Attend(heads, dropout, use_flash)
+        self.attend = Attend(heads, dropout, sdp_backend)
 
         self.to_out = nn.Linear(inner_dim, dim, bias=False)
 
@@ -166,7 +171,7 @@ class CrossAttention(nn.Module):
         attn_dropout: float = 0.1,
         normalize_q: bool = False,
         dim_out: int | None = None,
-        use_flash: bool = False,
+        sdp_backend: dict[str, bool] | None = None,
     ) -> None:
         super().__init__()
         self.heads = heads
@@ -184,7 +189,7 @@ class CrossAttention(nn.Module):
         self.to_q = nn.Linear(dim, inner_dim, bias=False)
         self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
 
-        self.attend = Attend(heads, attn_dropout, use_flash)
+        self.attend = Attend(heads, attn_dropout, sdp_backend)
 
         self.to_out = nn.Linear(inner_dim, dim if dim_out is None else dim_out, bias=False)
 
@@ -244,7 +249,7 @@ class AttentionBlock(nn.Module):
         class_attention: bool = False,
         attention_residual: bool = True,
         pre_norm: bool = True,
-        use_flash: bool = False,
+        sdp_backend: dict[str, bool] | None = None,
     ) -> None:
         super().__init__()
         self.attention_residual = attention_residual
@@ -253,11 +258,21 @@ class AttentionBlock(nn.Module):
 
         if class_attention:
             self.attn = ClassAttention(
-                dim, heads=heads, dim_head=dim_head, dropout=attn_dropout, pre_norm=pre_norm, use_flash=use_flash
+                dim,
+                heads=heads,
+                dim_head=dim_head,
+                dropout=attn_dropout,
+                pre_norm=pre_norm,
+                sdp_backend=sdp_backend,
             )
         else:
             self.attn = Attention(
-                dim, heads=heads, dim_head=dim_head, dropout=attn_dropout, pre_norm=pre_norm, use_flash=use_flash
+                dim,
+                heads=heads,
+                dim_head=dim_head,
+                dropout=attn_dropout,
+                pre_norm=pre_norm,
+                sdp_backend=sdp_backend,
             )
 
         self.ff = GeGLUNet(dim, mult=mlp_dim // dim, dropout=ff_dropout, output_dropout=False)
@@ -287,7 +302,7 @@ class AttentionEncoder(nn.Module):
         class_attention: bool = False,
         first_attn_no_residual: bool = False,
         first_attn_no_layernorm: bool = False,
-        use_flash: bool = False,
+        sdp_backend: dict[str, bool] | None = None,
     ) -> None:
         super().__init__()
         attn_blocks = []
@@ -314,7 +329,7 @@ class AttentionEncoder(nn.Module):
                     class_attention=class_attention,
                     attention_residual=attention_residual,
                     pre_norm=pre_norm,
-                    use_flash=use_flash,
+                    sdp_backend=sdp_backend,
                 )
             )
 

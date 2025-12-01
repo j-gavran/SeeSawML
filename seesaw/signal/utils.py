@@ -53,9 +53,6 @@ def handle_events_signal_dataset(
 
 
 def handle_full_signal_dataset(stacked_datasets: StackedDatasets, ml_iterator: MLHdf5Iterator) -> WeightedDatasetBatch:
-    if ml_iterator.imbalanced_sampler is not None:
-        raise NotImplementedError("Imbalanced sampling is not implemented for full signal dataset!")
-
     weighted_dataset_batch_dct = {}
 
     X: np.ndarray = stacked_datasets["events"].X
@@ -63,6 +60,8 @@ def handle_full_signal_dataset(stacked_datasets: StackedDatasets, ml_iterator: M
     w: np.ndarray = stacked_datasets["events"].get_extra("weights")  # type: ignore[assignment]
 
     remap_labels: dict[int, int] | None = ml_iterator.dataset_kwargs.get("remap_labels", None)
+    imbalanced_sampler = ml_iterator.imbalanced_sampler
+
     mask_unmapped: np.ndarray | None = None
 
     if remap_labels is not None:
@@ -71,6 +70,15 @@ def handle_full_signal_dataset(stacked_datasets: StackedDatasets, ml_iterator: M
         X, w = X[mask_unmapped], w[mask_unmapped]
 
     y = y.astype(np.int64)
+
+    if imbalanced_sampler is not None:
+        if len(np.unique(y)) >= 2:
+            X = np.concatenate([X, w[:, None]], axis=1)
+            X, y = imbalanced_sampler.fit(X, y)
+            X, w = X[:, :-1], X[:, -1]
+            resampled_indices = imbalanced_sampler.sampler.sample_indices_
+        else:
+            return None
 
     if ml_iterator.shuffle:
         shuffle_idx = np.random.permutation(len(y))
@@ -92,6 +100,9 @@ def handle_full_signal_dataset(stacked_datasets: StackedDatasets, ml_iterator: M
                     f"Length mismatch: {ds_name} has {X_other.shape[0]}, events mask has {mask_unmapped.shape[0]}"
                 )
             X_other = X_other[mask_unmapped]
+
+        if imbalanced_sampler is not None:
+            X_other = X_other[resampled_indices]
 
         if shuffle_idx is not None:
             if shuffle_idx.shape[0] != X_other.shape[0]:

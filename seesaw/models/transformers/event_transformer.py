@@ -25,7 +25,7 @@ class EventTransformer(nn.Module):
         ff_dropout: float = 0.0,
         act_out: str | None = None,
         categories: np.ndarray | None = None,
-        flash: bool = False,
+        sdp_backend: dict[str, bool] | None = None,
         embedding_config_dct: dict[str, Any] | None = None,
         remove_first_attn_residual: bool = False,
         remove_first_attn_layernorm: bool = True,
@@ -59,8 +59,8 @@ class EventTransformer(nn.Module):
             Activation function for the output layer, by default None. If None, Identity is applied.
         categories : np.ndarray, optional
             Array of categories, by default None. If None, no categorical embeddings are used.
-        flash : bool, optional
-            If True, uses flash attention for the multi-head attention block, by default False.
+        sdp_backend : dict[str, bool] | None, optional
+            Configuration dictionary for scaled dot-product attention backend, by default None.
         embedding_config_dct : dict[str, Any] | None, optional
             Configuration dictionary for embeddings, by default None.
         remove_first_attn_residual : bool, optional
@@ -103,7 +103,7 @@ class EventTransformer(nn.Module):
             ff_dropout=ff_dropout,
             first_attn_no_residual=remove_first_attn_residual,
             first_attn_no_layernorm=remove_first_attn_layernorm,
-            use_flash=flash,
+            sdp_backend=sdp_backend,
         )
 
         self.use_cls_token = use_cls_token

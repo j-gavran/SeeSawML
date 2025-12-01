@@ -66,7 +66,7 @@ class SetAttention(nn.Module):
         attn_dropout: float = 0.1,
         normalize_q: bool = True,
         use_setnorm: bool = True,
-        use_flash: bool = False,
+        sdp_backend: dict[str, bool] | None = None,
     ) -> None:
         super().__init__()
         self.heads = heads
@@ -85,7 +85,7 @@ class SetAttention(nn.Module):
         self.to_q = nn.Linear(dim, inner_dim, bias=False)
         self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
 
-        self.attend = Attend(heads, attn_dropout, use_flash)
+        self.attend = Attend(heads, attn_dropout, sdp_backend)
 
         self.to_out = nn.Linear(inner_dim, dim, bias=False)
 
@@ -127,7 +127,7 @@ class SetMultiheadAttentionBlock(nn.Module):
         normalize_q: bool = True,
         use_setnorm: bool = True,
         attention_residual: bool = True,
-        use_flash: bool = False,
+        sdp_backend: dict[str, bool] | None = None,
     ) -> None:
         super().__init__()
         self.attention_residual = attention_residual
@@ -139,7 +139,7 @@ class SetMultiheadAttentionBlock(nn.Module):
             attn_dropout=attn_dropout,
             normalize_q=normalize_q,
             use_setnorm=use_setnorm,
-            use_flash=use_flash,
+            sdp_backend=sdp_backend,
         )
         self.ff = GeGLUNet(dim, mult=mlp_dim // dim, dropout=ff_dropout, use_layernorm=False, output_dropout=False)
 
@@ -174,7 +174,7 @@ class SetAttentionBlock(nn.Module):
         ff_dropout: float = 0.1,
         use_setnorm: bool = True,
         attention_residual: bool = True,
-        use_flash: bool = False,
+        sdp_backend: dict[str, bool] | None = None,
     ) -> None:
         super().__init__()
         self.attn = SetMultiheadAttentionBlock(
@@ -187,7 +187,7 @@ class SetAttentionBlock(nn.Module):
             normalize_q=True,
             use_setnorm=use_setnorm,
             attention_residual=attention_residual,
-            use_flash=use_flash,
+            sdp_backend=sdp_backend,
         )
 
     def forward(
@@ -212,7 +212,7 @@ class InducedSetAttentionBlock(nn.Module):
         ff_dropout: float = 0.1,
         num_inducing_points: int = 1,
         use_setnorm: bool = True,
-        use_flash: bool = False,
+        sdp_backend: dict[str, bool] | None = None,
     ) -> None:
         super().__init__()
         self.inducing_points = nn.Parameter(torch.empty(1, num_inducing_points, dim))
@@ -227,7 +227,7 @@ class InducedSetAttentionBlock(nn.Module):
             ff_dropout=ff_dropout,
             normalize_q=False,
             use_setnorm=use_setnorm,
-            use_flash=use_flash,
+            sdp_backend=sdp_backend,
         )
         self.attn_2 = SetMultiheadAttentionBlock(
             dim,
@@ -238,7 +238,7 @@ class InducedSetAttentionBlock(nn.Module):
             ff_dropout=ff_dropout,
             normalize_q=True,
             use_setnorm=use_setnorm,
-            use_flash=use_flash,
+            sdp_backend=sdp_backend,
         )
 
     def forward(
@@ -267,7 +267,7 @@ class PooledMultiheadAttention(nn.Module):
         ff_dropout: float = 0.1,
         num_seeds: int = 1,
         use_setnorm: bool = True,
-        use_flash: bool = False,
+        sdp_backend: dict[str, bool] | None = None,
     ) -> None:
         super().__init__()
         self.seed_vectors = nn.Parameter(torch.empty(1, num_seeds, dim))
@@ -282,7 +282,7 @@ class PooledMultiheadAttention(nn.Module):
             ff_dropout=ff_dropout,
             normalize_q=True,
             use_setnorm=use_setnorm,
-            use_flash=use_flash,
+            sdp_backend=sdp_backend,
         )
 
     def forward(
@@ -372,7 +372,7 @@ class SetTransformer(nn.Module):
         use_predict: bool = True,
         use_setnorm: bool = True,
         first_attn_no_residual: bool = False,
-        use_flash: bool = False,
+        sdp_backend: dict[str, bool] | None = None,
     ) -> None:
         """Set Transformer: Attention-based permutation invariant neural network for sets.
 
@@ -404,7 +404,7 @@ class SetTransformer(nn.Module):
                         ff_dropout=ff_dropout,
                         use_setnorm=use_setnorm,
                         attention_residual=False if first_attn_no_residual and i == 0 else True,
-                        use_flash=use_flash,
+                        sdp_backend=sdp_backend,
                     )
                 )
             else:
@@ -418,7 +418,7 @@ class SetTransformer(nn.Module):
                         ff_dropout=ff_dropout,
                         num_inducing_points=num_inducing_points,  # type: ignore[arg-type]
                         use_setnorm=use_setnorm,
-                        use_flash=use_flash,
+                        sdp_backend=sdp_backend,
                     )
                 )
 
@@ -433,7 +433,7 @@ class SetTransformer(nn.Module):
             ff_dropout=ff_dropout,
             num_seeds=num_seeds,
             use_setnorm=use_setnorm,
-            use_flash=use_flash,
+            sdp_backend=sdp_backend,
         )
 
         self.disable_decoder_masking = disable_decoder_masking
@@ -455,7 +455,7 @@ class SetTransformer(nn.Module):
                         ff_dropout=ff_dropout,
                         mlp_dim=mlp_dim,
                         use_setnorm=use_setnorm,
-                        use_flash=use_flash,
+                        sdp_backend=sdp_backend,
                     )
                 )
 
@@ -524,7 +524,7 @@ class EventsSetDecoder(nn.Module):
         pool_predict: bool = False,
         disable_decoder_masking: bool = False,
         use_setnorm: bool = True,
-        use_flash: bool = False,
+        sdp_backend: dict[str, bool] | None = None,
     ) -> None:
         super().__init__()
         self.pool_predict = pool_predict
@@ -541,7 +541,7 @@ class EventsSetDecoder(nn.Module):
                     attn_dropout=attn_dropout,
                     ff_dropout=ff_dropout,
                     use_setnorm=use_setnorm,
-                    use_flash=use_flash,
+                    sdp_backend=sdp_backend,
                 )
             )
 

@@ -223,7 +223,7 @@ def _build_events_network(
             ff_dropout=architecture_config.get("ff_dropout", 0.1),
             act_out=architecture_config.get("act_out", None),
             categories=categories,
-            flash=architecture_config.get("flash_attention", False),
+            sdp_backend=architecture_config.get("sdp_backend", None),
             embedding_config_dct=embedding_config,
             remove_first_attn_residual=architecture_config.get("remove_first_attn_residual", False),
             remove_first_attn_layernorm=architecture_config.get("remove_first_attn_layernorm", True),
@@ -355,10 +355,6 @@ def _build_jagged_network(
     if post_embeddings_config is not None:
         embedding_config["post_embeddings_dct"] = dict(post_embeddings_config)
 
-    use_flash = architecture_config.get("flash_attention", False)
-    if use_flash:
-        logging.info("[yellow]Using flash attention!")
-
     if "flat_model_config" in architecture_config:
         flat_model_arhitecture = architecture_config.flat_model_config.architecture_config
         events_model = _build_events_network(
@@ -431,7 +427,7 @@ def _build_jagged_network(
             add_particle_types=architecture_config.get("add_particle_types", False),
             flat_model=events_model,
             flat_fuse=architecture_config.get("flat_fuse", {}),
-            use_flash=use_flash,
+            sdp_backend=architecture_config.get("sdp_backend", None),
             debug_masks=architecture_config.get("debug_masks", False),
         )
     else:

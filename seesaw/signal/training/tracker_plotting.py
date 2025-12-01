@@ -272,7 +272,7 @@ def plot_multiclass_model_score(
     ax.set_ylabel("Events", fontsize=16)
     ax.set_yscale("log")
 
-    ax.legend(fontsize=12)
+    ax.legend(loc="upper right", fontsize=12)
 
     atlas_label(ax, loc=0, fontsize=14)
     if is_softmax:
@@ -398,7 +398,7 @@ def plot_multiclass_one_vs_rest_roc(
     ax.set_title("ROC Curve (One-vs-Rest)", loc="right", fontsize=14)
     ax.set_xlabel("False Positive Rate")
     ax.set_ylabel("True Positive Rate")
-    ax.legend(fontsize=12)
+    ax.legend(loc="lower right", fontsize=12)
 
     atlas_label(ax, loc=0, fontsize=14)
 
@@ -441,7 +441,7 @@ def plot_multiclass_discriminant(
     ax.set_ylabel("Events", fontsize=16)
     ax.set_yscale("log")
 
-    ax.legend(fontsize=12)
+    ax.legend(loc="upper right", fontsize=12)
     atlas_label(ax, loc=0, fontsize=14)
     save_plot(fig, f"{save_path}/multiclass_log_discriminant_{save_postfix}.pdf", use_format="pdf")
 

@@ -48,6 +48,17 @@ Training dataset configuration options for saved HDF5 datasets are specified in 
 !!! Note
     Piecewise Linear Encoding (PLE) does not require feature scaling. It is a model layer applied directly on the raw feature values during model training.
 
+!!! Example
+    Example config for oversampling:
+
+    ```yaml
+    dataset_kwargs:
+      imbalanced_sampler: RandomOverSampler # or RandomUnderSampler
+      imbalanced_sampler_kwargs:
+        sampling_strategy: not majority
+    ```
+    For all alvailable options, see the [imbalanced-learn documentation](https://imbalanced-learn.org/stable/index.html).
+
 !!! Warning
     TNAnalysis only supports `minmax`, `standard`, and `label-encoder` scaling methods.
 
@@ -67,11 +78,7 @@ Training dataset configuration options for saved HDF5 datasets are specified in 
     $$
     w_i = \frac{N}{n_i \, C} ,
     $$
-    where $w_i$ is the weight for class $i$, $N$ is the total number of samples, $n_i$ is the number of samples in class $i$ and $C$ is the total number of classes. If `norm_class_weights` is set to `true`, the weights are normalized so that they sum to 1:
-    $$
-    w_i = \frac{1}{n_i \displaystyle \sum_{j=1}^{C} \dfrac{1}{n_j}} .
-    $$
-    These weights are then used in the loss function during training to give more importance to underrepresented classes.
+    where $w_i$ is the weight for class $i$, $N$ is the total number of samples, $n_i$ is the number of samples in class $i$ and $C$ is the total number of classes. If `norm_class_weights` is set to `true`, the weights are normalized so that they sum to 1 in the specific dataset split.
 
 !!! Example
     `classes` configuration for binary classification:

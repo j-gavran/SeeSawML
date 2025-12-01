@@ -235,6 +235,7 @@ Implements deep sets architecture from [https://arxiv.org/abs/1703.06114](https:
 - `batchnorm: bool`: Whether to apply batch normalization after each layer, by default `true`.
 - `dropout: float`: Dropout rate to apply after each layer, by default `0.0`.
 - `mean_pooling: bool`: Whether to use mean pooling before the decoder MLP, by default `true`. If `false` reshapes the output before feeding to MLP.
+- `add_particle_types: bool`: Whether to add particle type embeddings to the jagged input features, by default `false`. For jagged model only.
 - `compile: bool`: Whether to compile the model using `torch.compile` for improved performance, by default `false`.
 - `compile_kwargs: dict[str | Any]`: Additional keyword arguments to pass to `torch.compile`, by default `null`.
 
@@ -295,6 +296,7 @@ Implements set transformer from [https://arxiv.org/abs/1810.00825](https://arxiv
 - `cross_decoder_pool: bool`: Whether to use pooling in cross attention layers, by default `false`. If `false` reshapes the output before feeding to MLP.
 - `cross_decoder_act: str`: Activation function for cross attention layers.
 - `debug_masks: bool`: Whether to enable debug mode for masks, by default `false`.
+- `add_particle_types: bool`: Whether to add particle type embeddings to jagged features, by default `false`.
 - `compile: bool`: Whether to compile the model using `torch.compile` for improved performance, by default `false`.
 - `compile_kwargs: dict[str | Any]`: Additional keyword arguments to pass to `torch.compile`, by default `null`.
 - `flash_attention: bool`: Whether to use flash attention for improved performance, by default `false`.

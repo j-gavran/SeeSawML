@@ -243,7 +243,7 @@ class FlatJaggedFuser(nn.Module):
                 attn_dropout=dropout,
                 normalize_q=True,
                 dim_out=output_dim,
-                use_flash=fuse_kwargs.get("use_flash", False),
+                sdp_backend=fuse_kwargs.get("sdp_backend", None),
             )
 
     def forward(self, flat_x: torch.Tensor, jagged_x: torch.Tensor) -> torch.Tensor:

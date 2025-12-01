@@ -1,15 +1,14 @@
 import logging
 import os
-from typing import Any, Type
+from typing import Any
 
 import hydra
 import lightning as L
-import torch
 from f9columnar.ml.dataloader_helpers import get_hdf5_columns, get_hdf5_metadata
 from f9columnar.ml.hdf5_dataloader import events_collate_fn, full_collate_fn
 from f9columnar.ml.lightning_data_module import LightningHdf5DataModule
 from lightning.pytorch import seed_everything
-from omegaconf import DictConfig, open_dict
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 from seesaw.models.calibration import get_calibration_split, get_calibration_wrapper
 from seesaw.models.nn_modules import BaseLightningModule
@@ -55,6 +54,17 @@ def get_signal_data_module(
         feature_scaling_kwargs = {}
 
     dataset_kwargs = dict(dataset_conf["dataset_kwargs"]) | feature_scaling_kwargs
+
+    if dataset_kwargs.get("imbalanced_sampler", None) is not None:
+        if dataset_conf.get("use_class_weights", False):
+            raise ValueError("Imbalanced sampling cannot be used with class weights!")
+
+        if dataset_conf.get("use_mc_weights", False):
+            raise ValueError("Imbalanced sampling cannot be used with MC weights!")
+
+    if dataset_kwargs.get("imbalanced_sampler_kwargs", None) is not None:
+        imbalanced_sampler_kwargs = OmegaConf.to_container(dataset_kwargs["imbalanced_sampler_kwargs"], resolve=True)
+        dataset_kwargs["imbalanced_sampler_kwargs"] = imbalanced_sampler_kwargs
 
     metadata = get_hdf5_metadata(dataset_conf.files, resolve_path=True)
     labels = metadata.get("labels", None)
