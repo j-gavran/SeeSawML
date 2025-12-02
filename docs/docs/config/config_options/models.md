@@ -270,7 +270,23 @@ Implements feature tokenzier transformer from [https://arxiv.org/abs/2106.11959]
 - `use_cls_token: bool`: Whether to use a cls token for classification, by default `true`. If `false`, mean pooling is used.
 - `compile: bool`: Whether to compile the model using `torch.compile` for improved performance, by default `false`.
 - `compile_kwargs: dict[str | Any]`: Additional keyword arguments to pass to `torch.compile`, by default `null`.
-- `flash_attention: bool`: Whether to use flash attention for improved performance, by default `false`.
+- `sdp_backend: dict[str, bool] | None`: Specifies the backend for scaled dot-product attention, by default `null`.
+    - `enable_math: bool`: Whether to enable math kernel, by default `false`.
+    - `enable_flash: bool`: Whether to enable flash attention, by default `false`.
+    - `enable_mem_efficient: bool`: Whether to enable memory efficient attention, by default `false`.
+    - `enable_cudnn: bool`: Whether to enable cuDNN attention, by default `false`.
+
+!!! Info
+    SDP (scaled dot product) attention backends can be used to optimize memory usage and speed of attention computation. Depending on the hardware and input sizes, different backends may provide better performance. It is recommended to experiment with different combinations to find the optimal configuration for a given use case.
+
+    Available options are:
+
+    - `MATH` is the PyTorch C++ attention implementation.
+    - `FLASH_ATTENTION` is the attention implementation from the flash attention paper.
+    - `EFFICIENT_ATTENTION` is the implementation from the facebook xformers library.
+    - `CUDNN_ATTENTION` is the implementation from the Nvidia CuDNN library.
+
+    See [PyTorch documentation](https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) for more details.
 
 #### Set Transformer
 
@@ -299,7 +315,11 @@ Implements set transformer from [https://arxiv.org/abs/1810.00825](https://arxiv
 - `add_particle_types: bool`: Whether to add particle type embeddings to jagged features, by default `false`.
 - `compile: bool`: Whether to compile the model using `torch.compile` for improved performance, by default `false`.
 - `compile_kwargs: dict[str | Any]`: Additional keyword arguments to pass to `torch.compile`, by default `null`.
-- `flash_attention: bool`: Whether to use flash attention for improved performance, by default `false`.
+- `sdp_backend: dict[str, bool] | None`: Specifies the backend for scaled dot-product attention, by default `null`.
+    - `enable_math: bool`: Whether to enable math kernel, by default `false`.
+    - `enable_flash: bool`: Whether to enable flash attention, by default `false`.
+    - `enable_mem_efficient: bool`: Whether to enable memory efficient attention, by default `false`.
+    - `enable_cudnn: bool`: Whether to enable cuDNN attention, by default `false`.
 
 !!! Info
 
