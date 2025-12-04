@@ -98,8 +98,8 @@ def plot_binary_confusion_matrix(
         ax.set_xlabel("Predicted Label", fontsize=16)
         ax.set_ylabel("True Label", fontsize=16)
         ax.set_title(f"Signal={sig_label}, Background={bkg_label}", fontsize=16, loc="right")
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
-        ax.set_yticklabels(ax.get_yticklabels(), rotation=0, ha="right")
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+        plt.setp(ax.get_yticklabels(), rotation=0, ha="right")
 
         ax.minorticks_off()
         ax.tick_params(axis="both", which="major", length=3, width=1)
@@ -189,7 +189,11 @@ def plot_multiclass_confusion_matrix(cm: np.ndarray, labels: dict[str, int], sav
         labels_lst[i] = get_label(label).latex_name
 
     for to_perc in [True, False]:
-        fig, ax = plt.subplots(figsize=(len(labels_lst) * 0.9, len(labels_lst) * 0.9))
+        n_labels = len(labels_lst)
+        # Keep a reasonable minimum canvas so tick labels and ATLAS tag do not
+        # squeeze the heatmap for small class counts.
+        fig_size = max(n_labels * 0.9, 6.0)
+        fig, ax = plt.subplots(figsize=(fig_size, fig_size))
 
         if to_perc:
             cm_perc = cm / cm.sum(axis=1, keepdims=True)
@@ -212,8 +216,8 @@ def plot_multiclass_confusion_matrix(cm: np.ndarray, labels: dict[str, int], sav
         ax.set_xlabel("Predicted Label", fontsize=16)
         ax.set_ylabel("True Label", fontsize=16)
 
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
-        ax.set_yticklabels(ax.get_yticklabels(), rotation=0, ha="right")
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+        plt.setp(ax.get_yticklabels(), rotation=0, ha="right")
 
         plt.xlabel("Predicted")
         plt.ylabel("True")
