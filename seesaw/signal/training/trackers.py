@@ -97,19 +97,19 @@ class SigBkgClassifierTracker(Tracker):
 
     def calculate_roc(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
         fpr, tpr, _ = self.roc_metric(y_pred, y_true)
-        fpr, tpr = fpr.numpy(), tpr.numpy()
+        fpr, tpr = self.to_float32_numpy(fpr), self.to_float32_numpy(tpr)
 
         return fpr, tpr
 
     def calulate_prc(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
         precision, recall, _ = self.prc_metric(y_pred, y_true)
-        precision, recall = precision.numpy(), recall.numpy()
+        precision, recall = self.to_float32_numpy(precision), self.to_float32_numpy(recall)
 
         return precision, recall
 
     def calculate_bcm(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> np.ndarray:
         bcm = self.bcm(y_pred, y_true)
-        bcm = bcm.numpy()
+        bcm = self.to_int64_numpy(bcm)
 
         return bcm
 
@@ -204,10 +204,10 @@ class SigBkgClassifierTracker(Tracker):
             save_postfix=save_postfix,
         )
 
-        accumulated_true_np = accumulated_true.to(torch.float32).numpy()
-        accumulated_pred_np = accumulated_pred.to(torch.float32).numpy()
-        accumulated_logit_pred_np = accumulated_logit_pred.to(torch.float32).numpy()
-        accumulated_mc_weights_np = accumulated_mc_weights.to(torch.float32).numpy()
+        accumulated_true_np = self.to_int64_numpy(accumulated_true)
+        accumulated_pred_np = self.to_float32_numpy(accumulated_pred)
+        accumulated_logit_pred_np = self.to_float32_numpy(accumulated_logit_pred)
+        accumulated_mc_weights_np = self.to_float32_numpy(accumulated_mc_weights)
 
         model_scores = {
             "normalised_weighted": (True, True),
@@ -271,7 +271,7 @@ class SigBkgMulticlassClassifierTracker(Tracker):
 
         self.num_classes = len(self.dataset_conf.classes)
 
-        self.class_labels: dict[str, int] | None = None
+        self._class_labels: dict[str, int] | None = None
 
         self.accumulated_true: list[torch.Tensor] = []
         self.accumulated_pred: list[torch.Tensor] = []
@@ -286,10 +286,16 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         self.current_events = 0
 
     def _set_class_labels(self, reports: dict[str, Any]) -> None:
-        self.class_labels = reports.get("class_labels", None)
+        self._class_labels = reports.get("class_labels", None)
 
-        if self.class_labels is None:
+        if self._class_labels is None:
             raise RuntimeError("Class labels are not provided in the reports.")
+
+    @property
+    def class_labels(self) -> dict[str, int]:
+        if self._class_labels is None:
+            raise RuntimeError("Class labels have not been set.")
+        return self._class_labels
 
     def reset(self) -> None:
         self.accumulated_true.clear()
@@ -315,12 +321,12 @@ class SigBkgMulticlassClassifierTracker(Tracker):
 
     def calculate_cm(self, y_true: torch.Tensor, y_pred: torch.Tensor) -> np.ndarray:
         cm = MulticlassConfusionMatrix(self.num_classes)
-        return cm(torch.argmax(y_pred, dim=1), y_true).numpy()
+        return self.to_int64_numpy(cm(torch.argmax(y_pred, dim=1), y_true))
 
     def compute(self, batch: WeightedBatchType, stage: str) -> bool:
         self.stage, self.current_epoch = stage, self.module.current_epoch
 
-        if (self.current_epoch == 0 and self.current_events == 0) or self.stage == "test" or self.class_labels is None:
+        if (self.current_epoch == 0 and self.current_events == 0) or self.stage == "test" or self._class_labels is None:
             self._set_class_labels(batch[-1])
 
         if not self.validate_compute():
@@ -355,7 +361,7 @@ class SigBkgMulticlassClassifierTracker(Tracker):
             f1 = self.f1.compute()
 
             if self.has_class_weights:
-                weights = self.get_class_weights_tensor(stage).to(f1.device)
+                weights = self.get_class_weights_tensor(stage, dtype=f1.dtype).to(f1.device)
             else:
                 weights = torch.ones_like(f1)
 
@@ -370,17 +376,17 @@ class SigBkgMulticlassClassifierTracker(Tracker):
 
         accumulated_true = torch.cat(self.accumulated_true)
         accumulated_pred = torch.cat(self.accumulated_pred)
-        np_accumulated_logits = torch.cat(self.accumulated_logits).numpy()
+        np_accumulated_logits = self.to_float32_numpy(torch.cat(self.accumulated_logits))
 
         if not self.plotting_conf.get("disable_projections", True):
-            tsne_pca_X = torch.cat(self.tsne_pca_X).numpy()
-            tsne_pca_y_true = torch.cat(self.tsne_pca_y_true).numpy()
-            tsne_pca_y_pred = torch.cat(self.tsne_pca_y_pred).numpy()
+            tsne_pca_X = self.to_float32_numpy(torch.cat(self.tsne_pca_X))
+            tsne_pca_y_true = self.to_float32_numpy(torch.cat(self.tsne_pca_y_true))
+            tsne_pca_y_pred = self.to_float32_numpy(torch.cat(self.tsne_pca_y_pred))
 
         cm = self.calculate_cm(accumulated_true, accumulated_pred)
 
-        np_accumulated_true = accumulated_true.numpy()
-        np_accumulated_pred = accumulated_pred.numpy()
+        np_accumulated_true = self.to_int64_numpy(accumulated_true)
+        np_accumulated_pred = self.to_float32_numpy(accumulated_pred)
 
         if stage == "test":
             save_postfix = "test_epoch"
@@ -575,19 +581,19 @@ class JaggedSigBkgClassifierTracker(Tracker):
 
     def calculate_roc(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
         fpr, tpr, _ = self.roc_metric(y_pred, y_true)
-        fpr, tpr = fpr.numpy(), tpr.numpy()
+        fpr, tpr = self.to_float32_numpy(fpr), self.to_float32_numpy(tpr)
 
         return fpr, tpr
 
     def calulate_prc(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
         precision, recall, _ = self.prc_metric(y_pred, y_true)
-        precision, recall = precision.numpy(), recall.numpy()
+        precision, recall = self.to_float32_numpy(precision), self.to_float32_numpy(recall)
 
         return precision, recall
 
     def calculate_bcm(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> np.ndarray:
         bcm = self.bcm(y_pred, y_true)
-        bcm = bcm.numpy()
+        bcm = self.to_int64_numpy(bcm)
 
         return bcm
 
@@ -693,10 +699,10 @@ class JaggedSigBkgClassifierTracker(Tracker):
             save_postfix=save_postfix,
         )
 
-        accumulated_true_np = accumulated_true.to(torch.float32).numpy()
-        accumulated_pred_np = accumulated_pred.to(torch.float32).numpy()
-        accumulated_logit_pred_np = accumulated_logit_pred.to(torch.float32).numpy()
-        accumulated_mc_weights_np = accumulated_mc_weights.to(torch.float32).numpy()
+        accumulated_true_np = self.to_int64_numpy(accumulated_true)
+        accumulated_pred_np = self.to_float32_numpy(accumulated_pred)
+        accumulated_logit_pred_np = self.to_float32_numpy(accumulated_logit_pred)
+        accumulated_mc_weights_np = self.to_float32_numpy(accumulated_mc_weights)
 
         model_scores = {
             "normalised_weighted": (True, True),
@@ -760,7 +766,7 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
 
         self.num_classes = len(self.dataset_conf.classes)
 
-        self.class_labels: dict[str, int] | None = None
+        self._class_labels: dict[str, int] | None = None
 
         self.accumulated_true: list[torch.Tensor] = []
         self.accumulated_pred: list[torch.Tensor] = []
@@ -775,9 +781,15 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
         self.current_events = 0
 
     def _set_class_labels(self, reports: dict[str, Any]) -> None:
-        self.class_labels = reports.get("class_labels", None)
-        if self.class_labels is None:
+        self._class_labels = reports.get("class_labels", None)
+        if self._class_labels is None:
             raise RuntimeError("Class labels are not provided in the reports.")
+
+    @property
+    def class_labels(self) -> dict[str, int]:
+        if self._class_labels is None:
+            raise RuntimeError("Class labels have not been set.")
+        return self._class_labels
 
     def reset(self) -> None:
         self.accumulated_true.clear()
@@ -803,7 +815,7 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
 
     def calculate_cm(self, y_true: torch.Tensor, y_pred: torch.Tensor) -> np.ndarray:
         cm = MulticlassConfusionMatrix(self.num_classes)
-        return cm(torch.argmax(y_pred, dim=1), y_true).numpy()
+        return self.to_int64_numpy(cm(torch.argmax(y_pred, dim=1), y_true))
 
     def compute(self, batch: FullWeightedBatchType, stage: str) -> bool:
         self.stage, self.current_epoch = stage, self.module.current_epoch
@@ -815,7 +827,7 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
             return False
 
         reports = batch[-1]
-        if self.class_labels is None:
+        if self._class_labels is None:
             self._set_class_labels(reports)
 
         Xs: list[torch.Tensor] = []
@@ -852,7 +864,7 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
             f1 = self.f1.compute()
 
             if self.has_class_weights:
-                weights = self.get_class_weights_tensor(stage).to(f1.device)
+                weights = self.get_class_weights_tensor(stage, dtype=f1.dtype).to(f1.device)
             else:
                 weights = torch.ones_like(f1)
 
@@ -863,28 +875,21 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
         if not self.validate_plot():
             return False
 
-        if self.class_labels is None:
-            return False
-
         hep.style.use(hep.style.ATLAS)
 
         accumulated_true = torch.cat(self.accumulated_true)
         accumulated_pred = torch.cat(self.accumulated_pred)
-        np_accumulated_logits = torch.cat(self.accumulated_logits).to(torch.float32).numpy()
+        np_accumulated_logits = self.to_float32_numpy(torch.cat(self.accumulated_logits))
 
         if not self.plotting_conf.get("disable_projections", True):
-            tsne_pca_X = torch.cat(self.tsne_pca_X).numpy() if len(self.tsne_pca_X) != 0 else np.zeros((0,))
-            tsne_pca_y_true = (
-                torch.cat(self.tsne_pca_y_true).numpy() if len(self.tsne_pca_y_true) != 0 else np.zeros((0,))
-            )
-            tsne_pca_y_pred = (
-                torch.cat(self.tsne_pca_y_pred).numpy() if len(self.tsne_pca_y_pred) != 0 else np.zeros((0,))
-            )
+            tsne_pca_X = self.to_float32_numpy(torch.cat(self.tsne_pca_X))
+            tsne_pca_y_true = self.to_float32_numpy(torch.cat(self.tsne_pca_y_true))
+            tsne_pca_y_pred = self.to_float32_numpy(torch.cat(self.tsne_pca_y_pred))
 
         cm = self.calculate_cm(accumulated_true, accumulated_pred)
 
-        np_accumulated_true = accumulated_true.numpy()
-        np_accumulated_pred = accumulated_pred.numpy()
+        np_accumulated_true = self.to_int64_numpy(accumulated_true)
+        np_accumulated_pred = self.to_float32_numpy(accumulated_pred)
 
         if stage == "test":
             save_postfix = "test_epoch"

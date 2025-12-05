@@ -336,7 +336,7 @@ class Calibrator:
             probs_before = torch.sigmoid(logits.squeeze())
             probs_after = torch.sigmoid(self.param(logits).squeeze())
 
-            targets = labels.to(torch.float32)
+            targets = labels.to(logits.dtype)
 
             ece_before = expected_binary_calibration_error(probs_before, targets, weights)
             ece_after = expected_binary_calibration_error(probs_after, targets, weights)

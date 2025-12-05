@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import lightning as L
+import numpy as np
 import torch
 from omegaconf import DictConfig
 
@@ -110,6 +111,12 @@ class Tracker(ABC):
         # self.accumulated_results.clear()  # Example placeholder
         pass
 
+    def to_int64_numpy(self, tensor: torch.Tensor) -> np.ndarray:
+        return tensor.to(torch.int64).cpu().numpy()
+
+    def to_float32_numpy(self, tensor: torch.Tensor) -> np.ndarray:
+        return tensor.to(torch.float32).cpu().numpy()
+
     def add_class_weights(self, class_weights: dict[str, dict[int, float]]) -> None:
         self._class_weights = class_weights
 
@@ -123,19 +130,23 @@ class Tracker(ABC):
             raise ValueError("Class weights have not been set. Please use 'add_class_weights' to set them.")
         return self._class_weights
 
-    def get_class_weights_tensor(self, stage: str, norm: bool = False) -> torch.Tensor:
+    def get_class_weights_tensor(
+        self, stage: str, norm: bool = False, dtype: torch.dtype = torch.float32
+    ) -> torch.Tensor:
         class_weights = self.class_weights_dct[stage]
-        weights_tensor = torch.tensor([class_weights[i] for i in sorted(class_weights.keys())], dtype=torch.float32)
+        weights_tensor = torch.tensor([class_weights[i] for i in sorted(class_weights.keys())], dtype=dtype)
 
         if norm:
             weights_tensor = weights_tensor / torch.sum(weights_tensor)
 
         return weights_tensor
 
-    def get_class_weights_labels(self, labels: torch.Tensor, stage: str) -> torch.Tensor:
+    def get_class_weights_labels(
+        self, labels: torch.Tensor, stage: str, dtype: torch.dtype = torch.float32
+    ) -> torch.Tensor:
         _class_weights = self.class_weights_dct[stage]
 
-        class_weights = torch.zeros_like(labels, dtype=torch.float32)
+        class_weights = torch.zeros_like(labels, dtype=dtype)
 
         for class_label, class_weight in _class_weights.items():
             class_weights[labels == class_label] = class_weight

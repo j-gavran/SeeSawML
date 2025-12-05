@@ -191,7 +191,7 @@ class BaseSigBkgNNClassifier:
         stage: str | None = None,
     ) -> torch.Tensor:
         if not self.is_multiclass:
-            y, y_hat = y.to(torch.float32), y_hat.squeeze(1)
+            y, y_hat = y.to(X.dtype), y_hat.squeeze(1)
 
         loss = self.loss_func(y_hat, y)
 

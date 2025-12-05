@@ -131,8 +131,8 @@ def convert_sig_bkg_classifier(
     onnx_output = test_onnx_export(example_input, save_path)
     logging.info(f"ONNX test output: {onnx_output}")
 
-    torch_out_list = [t.detach().cpu().to(torch.float32) for t in _to_tensor_list(torch_output)]
-    onnx_out_list = [t.detach().cpu().to(torch.float32) for t in _to_tensor_list(onnx_output)]
+    torch_out_list = [t.detach().cpu() for t in _to_tensor_list(torch_output)]
+    onnx_out_list = [t.detach().cpu() for t in _to_tensor_list(onnx_output)]
 
     success = len(torch_out_list) == len(onnx_out_list) and all(
         torch.allclose(t, o) for t, o in zip(torch_out_list, onnx_out_list)
