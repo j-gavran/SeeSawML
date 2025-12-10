@@ -26,8 +26,6 @@ def sigmoid_focal_loss(
         The target tensor.
     gamma : float, optional
         The gamma value for the focal loss, by default 2.
-    pos_weight : float, optional
-        The positive class weight, by default 1.
     smoothing : float, optional
         The label smoothing value, by default 0.0.
     reduction : str, optional

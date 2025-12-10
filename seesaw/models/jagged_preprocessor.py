@@ -646,7 +646,7 @@ def build_adjacency_attention_mask(invalid: torch.Tensor) -> torch.Tensor:
 
     Parameters
     ----------
-    valid : torch.Tensor
+    invalid : torch.Tensor
         Valid mask of shape (i, j), where True indicates padded (not present) entries.
 
     Returns
