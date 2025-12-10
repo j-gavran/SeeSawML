@@ -8,13 +8,27 @@ Training dataset configuration options for saved HDF5 datasets are specified in 
     - `train: int | list[int]`: Number of piles or list of pile indices for the training set.
     - `val: int | list[int]`: Number of piles or list of pile indices for the validation set.
     - `test: int | list[int]`: Number of piles or list of pile indices for the test set.
+    - `calib: int | list[int]`: (Optional) Number of piles or list of pile indices for the calibration set.
 - `dataloader_kwargs: dict[str, Any]`: Additional keyword arguments to be passed to the DataLoader when loading the dataset.
     - `batch_size: int`: Number of samples per batch to load.
     - `prefetch_factor: int`: Number of batches to prefetch.
     - `num_workers: int`: Number of subprocesses to use for data loading. Set to -1 to use all available CPU cores.
 - `dataset_kwargs: dict[str, Any]`: Additional keyword arguments to be passed to the Dataset when initializing.
-    - `imbalanced_sampler: str | None`: Type of imbalanced sampler to use (`RandomUnderSampler` or `RandomOverSampler`). If set to `null`, no imbalanced sampling is applied. Only supported for binary classification tasks.
+    - `imbalanced_sampler: str | None`: Type of imbalanced sampler to use (`RandomUnderSampler` or `RandomOverSampler`), by default `null` (no sampler).
+    - `imbalanced_sampler_kwargs: dict[str, Any]`: Additional keyword arguments to be passed to the imbalanced sampler during initialization.
     - `drop_last: bool`: Whether to drop the last incomplete batch if the dataset size is not divisible by the batch size.
+
+!!! Example
+    Example config for oversampling:
+
+    ```yaml
+    dataset_kwargs:
+      imbalanced_sampler: RandomOverSampler # or RandomUnderSampler
+      imbalanced_sampler_kwargs:
+        sampling_strategy: not majority
+    ```
+    For all alvailable options, see the [imbalanced-learn documentation](https://imbalanced-learn.org/stable/index.html).
+
 - `features: list[str]`: List of feature names to be used as input for the model. Both flat and jagged features can be included.
 - `feature_scaling: dict[str, Any | dict[str, Any]]`: Dictionary specifying the scaling method for each feature.
     - `numer_scaler_type: str | None`: Type of scaler to use for numerical features. Supported scalers are listed below. If set to `null`, no numerical scaling is applied.
@@ -47,17 +61,6 @@ Training dataset configuration options for saved HDF5 datasets are specified in 
 
 !!! Note
     Piecewise Linear Encoding (PLE) does not require feature scaling. It is a model layer applied directly on the raw feature values during model training.
-
-!!! Example
-    Example config for oversampling:
-
-    ```yaml
-    dataset_kwargs:
-      imbalanced_sampler: RandomOverSampler # or RandomUnderSampler
-      imbalanced_sampler_kwargs:
-        sampling_strategy: not majority
-    ```
-    For all alvailable options, see the [imbalanced-learn documentation](https://imbalanced-learn.org/stable/index.html).
 
 !!! Warning
     TNAnalysis only supports `minmax`, `standard`, and `label-encoder` scaling methods.

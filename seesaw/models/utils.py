@@ -18,7 +18,7 @@ from seesaw.models.mlp import MLP
 from seesaw.models.nn_modules import BaseLightningModule
 from seesaw.models.res_net import ResNet
 from seesaw.models.transformers.event_transformer import EventTransformer
-from seesaw.models.transformers.jagged_transformer import JaggedTransformer
+from seesaw.models.transformers.set_transformer import SetTransformer
 
 
 def get_categories(
@@ -400,8 +400,8 @@ def _build_jagged_network(
             flat_fuse=architecture_config.get("flat_fuse", {}),
             **architecture_config.get("act_kwargs", {}),
         )
-    elif model_name == "JaggedTransformer":
-        model = JaggedTransformer(
+    elif model_name == "SetTransformer":
+        model = SetTransformer(
             embedding_dim=architecture_config.get("embedding_dim", 64),
             numer_idx=numer_columns_idx_dct,
             categ_idx=categ_columns_idx_dct,
@@ -420,15 +420,13 @@ def _build_jagged_network(
             ff_dropout=architecture_config.get("ff_dropout", 0.0),
             seed_strategy=architecture_config.get("seed_strategy", "pooling"),
             set_predictor_dct=dict(architecture_config.get("set_predictor", {})),
-            cross_decoder_depth=architecture_config.get("cross_decoder_depth", 2),
             embedding_config_dct=embedding_config,
-            set_transform_events=architecture_config.get("set_transform_events", False),
             use_setnorm=architecture_config.get("use_setnorm", True),
             add_particle_types=architecture_config.get("add_particle_types", False),
             flat_model=events_model,
             flat_fuse=architecture_config.get("flat_fuse", {}),
+            first_attn_no_residual=architecture_config.get("first_attn_no_residual", False),
             sdp_backend=architecture_config.get("sdp_backend", None),
-            debug_masks=architecture_config.get("debug_masks", False),
         )
     else:
         raise NotImplementedError("The model set in the params is not yet implemented!")

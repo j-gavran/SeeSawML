@@ -1,9 +1,13 @@
+from typing import Any
+
+import numpy as np
 import torch
-import torch.nn.functional as F
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from torch import nn
 
+from seesaw.models.jagged_preprocessor import JaggedPreprocessor
+from seesaw.models.layers import FlatJaggedFuser
 from seesaw.models.mlp import FeedForwardLayer
 from seesaw.models.transformers.attention import Attend
 from seesaw.models.transformers.ff_blocks import GeGLUNet
@@ -34,16 +38,15 @@ class SetNorm(nn.Module):
         if mask is None:
             mask = torch.ones((b, n), dtype=torch.bool, device=x.device)
 
-        means = (x * mask.unsqueeze(-1)).sum(dim=[1, 2]) / (mask.sum(dim=1) * f)
-        means = means.reshape(b, 1)
+        num_valid = torch.clamp(mask.sum(dim=1) * f, min=1.0)
 
-        std = torch.sqrt(
-            ((x - means.unsqueeze(-1)).square() * mask.unsqueeze(-1)).sum(dim=[1, 2]) / (mask.sum(dim=1) * f) + self.eps
-        )
-        std = std.reshape(b, 1)
+        means = (x * mask.unsqueeze(-1)).sum(dim=[1, 2]) / num_valid
+        means = means.reshape(b, 1, 1)
 
-        out = (x - means.unsqueeze(-1)) / std.unsqueeze(-1)
+        std = torch.sqrt(((x - means).square() * mask.unsqueeze(-1)).sum(dim=[1, 2]) / num_valid + self.eps)
+        std = std.reshape(b, 1, 1)
 
+        out = (x - means) / std
         out = out * self.weights + self.biases
 
         return out
@@ -115,7 +118,7 @@ class SetAttention(nn.Module):
         return self.to_out(out)
 
 
-class SetMultiheadAttentionBlock(nn.Module):
+class SetAttentionBlock(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -148,7 +151,7 @@ class SetMultiheadAttentionBlock(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        context: torch.Tensor | None,
+        context: torch.Tensor | None = None,
         attn_mask: torch.Tensor | None = None,
         set_q_mask: torch.Tensor | None = None,
         set_kv_mask: torch.Tensor | None = None,
@@ -161,99 +164,6 @@ class SetMultiheadAttentionBlock(nn.Module):
         h_norm = self.norm(h, mask=set_q_mask)
         out = h + self.ff(h_norm)
         return out
-
-
-class SetAttentionBlock(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        heads: int,
-        dim_head: int,
-        mlp_dim: int,
-        attn_dropout: float = 0.1,
-        ff_dropout: float = 0.1,
-        use_setnorm: bool = True,
-        attention_residual: bool = True,
-        sdp_backend: dict[str, bool] | None = None,
-    ) -> None:
-        super().__init__()
-        self.attn = SetMultiheadAttentionBlock(
-            dim,
-            heads=heads,
-            dim_head=dim_head,
-            mlp_dim=mlp_dim,
-            attn_dropout=attn_dropout,
-            ff_dropout=ff_dropout,
-            normalize_q=True,
-            use_setnorm=use_setnorm,
-            attention_residual=attention_residual,
-            sdp_backend=sdp_backend,
-        )
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        context: torch.Tensor | None = None,
-        attn_mask: torch.Tensor | None = None,
-        set_q_mask: torch.Tensor | None = None,
-        set_kv_mask: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        return self.attn(x, context=context, attn_mask=attn_mask, set_q_mask=set_q_mask, set_kv_mask=set_kv_mask)
-
-
-class InducedSetAttentionBlock(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        heads: int,
-        dim_head: int,
-        mlp_dim: int,
-        attn_dropout: float = 0.1,
-        ff_dropout: float = 0.1,
-        num_inducing_points: int = 1,
-        use_setnorm: bool = True,
-        sdp_backend: dict[str, bool] | None = None,
-    ) -> None:
-        super().__init__()
-        self.inducing_points = nn.Parameter(torch.empty(1, num_inducing_points, dim))
-        nn.init.xavier_uniform_(self.inducing_points)
-
-        self.attn_1 = SetMultiheadAttentionBlock(
-            dim,
-            heads=heads,
-            dim_head=dim_head,
-            mlp_dim=mlp_dim,
-            attn_dropout=attn_dropout,
-            ff_dropout=ff_dropout,
-            normalize_q=False,
-            use_setnorm=use_setnorm,
-            sdp_backend=sdp_backend,
-        )
-        self.attn_2 = SetMultiheadAttentionBlock(
-            dim,
-            heads=heads,
-            dim_head=dim_head,
-            mlp_dim=mlp_dim,
-            attn_dropout=attn_dropout,
-            ff_dropout=ff_dropout,
-            normalize_q=True,
-            use_setnorm=use_setnorm,
-            sdp_backend=sdp_backend,
-        )
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        attn_mask: torch.Tensor | None = None,
-        set_q_mask: torch.Tensor | None = None,
-        set_kv_mask: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        inducing_points = repeat(self.inducing_points, "1 m d -> b m d", b=x.shape[0])
-
-        h = self.attn_1(inducing_points, context=x, attn_mask=attn_mask, set_q_mask=set_q_mask, set_kv_mask=set_kv_mask)
-        x = self.attn_2(x, context=h, attn_mask=attn_mask, set_q_mask=set_q_mask, set_kv_mask=set_kv_mask)
-
-        return x
 
 
 class PooledMultiheadAttention(nn.Module):
@@ -273,7 +183,7 @@ class PooledMultiheadAttention(nn.Module):
         self.seed_vectors = nn.Parameter(torch.empty(1, num_seeds, dim))
         nn.init.xavier_uniform_(self.seed_vectors)
 
-        self.attn = SetMultiheadAttentionBlock(
+        self.attn = SetAttentionBlock(
             dim,
             heads=heads,
             dim_head=dim_head,
@@ -350,7 +260,7 @@ class SetPredictorNet(nn.Module):
         return self.set_predictor(x)
 
 
-class SetTransformer(nn.Module):
+class SetTransformerModel(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -359,7 +269,6 @@ class SetTransformer(nn.Module):
         heads: int,
         dim_head: int,
         mlp_dim: int,
-        num_inducing_points: int | None = None,
         num_seeds: int = 1,
         dim_out: int = 1,
         act_out: str | None = None,
@@ -368,7 +277,6 @@ class SetTransformer(nn.Module):
         act_predict: str = "ReLU",
         depth_predict: int = 2,
         pool_predict: bool = False,
-        disable_decoder_masking: bool = False,
         use_predict: bool = True,
         use_setnorm: bool = True,
         first_attn_no_residual: bool = False,
@@ -378,49 +286,27 @@ class SetTransformer(nn.Module):
 
         References
         ----------
-        [1] - https://arxiv.org/abs/1703.06114
-        [2] - https://arxiv.org/abs/1810.00825
-        [3] - https://github.com/TropComplique/set-transformer
-        [4] - https://github.com/juho-lee/set_transformer
+        - Set Transformer: A Framework for Attention-based Permutation-Invariant Neural Networks: https://arxiv.org/abs/1810.00825
+        - Set Transformer in PyTorch: https://github.com/TropComplique/set-transformer and https://github.com/juho-lee/set_transformer
 
         """
         super().__init__()
         self.encoder = nn.ModuleList()
 
-        if num_inducing_points is None:
-            self.use_induced = False
-        else:
-            self.use_induced = True
-
         for i in range(encoder_depth):
-            if not self.use_induced:
-                self.encoder.append(
-                    SetAttentionBlock(
-                        dim=dim,
-                        heads=heads,
-                        dim_head=dim_head,
-                        mlp_dim=mlp_dim,
-                        attn_dropout=attn_dropout,
-                        ff_dropout=ff_dropout,
-                        use_setnorm=use_setnorm,
-                        attention_residual=False if first_attn_no_residual and i == 0 else True,
-                        sdp_backend=sdp_backend,
-                    )
+            self.encoder.append(
+                SetAttentionBlock(
+                    dim=dim,
+                    heads=heads,
+                    dim_head=dim_head,
+                    mlp_dim=mlp_dim,
+                    attn_dropout=attn_dropout,
+                    ff_dropout=ff_dropout,
+                    use_setnorm=use_setnorm,
+                    attention_residual=False if first_attn_no_residual and i == 0 else True,
+                    sdp_backend=sdp_backend,
                 )
-            else:
-                self.encoder.append(
-                    InducedSetAttentionBlock(
-                        dim=dim,
-                        heads=heads,
-                        dim_head=dim_head,
-                        mlp_dim=mlp_dim,
-                        attn_dropout=attn_dropout,
-                        ff_dropout=ff_dropout,
-                        num_inducing_points=num_inducing_points,  # type: ignore[arg-type]
-                        use_setnorm=use_setnorm,
-                        sdp_backend=sdp_backend,
-                    )
-                )
+            )
 
         self.norm = SetNorm(dim) if use_setnorm else MaskedLayerNorm(dim)
 
@@ -435,8 +321,6 @@ class SetTransformer(nn.Module):
             use_setnorm=use_setnorm,
             sdp_backend=sdp_backend,
         )
-
-        self.disable_decoder_masking = disable_decoder_masking
 
         if decoder_depth is None or decoder_depth == 0 or num_seeds == 1:
             self.use_decoder = False
@@ -485,20 +369,14 @@ class SetTransformer(nn.Module):
         pooling_set_kv_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         for block in self.encoder:
-            if self.use_induced:
-                x = block(x, attn_mask=attn_mask, set_q_mask=set_q_mask, set_kv_mask=set_kv_mask)
-            else:
-                x = block(x, attn_mask=attn_mask, set_q_mask=set_q_mask, set_kv_mask=set_kv_mask)
+            x = block(x, attn_mask=attn_mask, set_q_mask=set_q_mask, set_kv_mask=set_kv_mask)
 
         x = self.norm(x, mask=set_q_mask)
         x = self.pooling(x, attn_mask=pooling_attn_mask, set_q_mask=pooling_set_q_mask, set_kv_mask=pooling_set_kv_mask)
 
         if self.use_decoder:
             for block in self.decoder:
-                if self.disable_decoder_masking:
-                    x = block(x, attn_mask=None, set_q_mask=None, set_kv_mask=None)
-                else:
-                    x = block(x, attn_mask=attn_mask, set_q_mask=set_q_mask, set_kv_mask=set_kv_mask)
+                x = block(x, attn_mask=None, set_q_mask=None, set_kv_mask=None)
 
         if self.use_predict:
             x = self.predict(x)
@@ -506,71 +384,122 @@ class SetTransformer(nn.Module):
         return x
 
 
-class EventsSetDecoder(nn.Module):
+class SetTransformer(nn.Module):
     def __init__(
         self,
-        dim: int,
-        depth: int,
-        heads: int,
-        dim_head: int,
-        mlp_dim: int,
-        num_seeds: int = 1,
+        embedding_dim: int,
+        numer_idx: dict[str, np.ndarray],
+        categ_idx: dict[str, np.ndarray],
+        categories: dict[str, np.ndarray],
+        numer_padding_tokens: dict[str, float | None],
+        categ_padding_tokens: dict[str, int | None],
+        object_dimensions: dict[str, int],
+        heads: int = 8,
+        encoder_depth: int = 2,
+        decoder_depth: int | None = None,
+        dim_head: int = 8,
+        ff_hidden_mult: int = 4,
         dim_out: int = 1,
         act_out: str | None = None,
-        attn_dropout: float = 0.1,
-        ff_dropout: float = 0.1,
-        act_predict: str = "ReLU",
-        depth_predict: int = 2,
-        pool_predict: bool = False,
-        disable_decoder_masking: bool = False,
+        attn_dropout: float = 0.0,
+        ff_dropout: float = 0.0,
+        seed_strategy: str = "pooling",
+        set_predictor_dct: dict[str, Any] | None = None,
+        embedding_config_dct: dict[str, Any] | None = None,
         use_setnorm: bool = True,
+        add_particle_types: bool = False,
+        flat_model: nn.Module | None = None,
+        flat_fuse: dict[str, Any] | None = None,
+        first_attn_no_residual: bool = False,
         sdp_backend: dict[str, bool] | None = None,
     ) -> None:
         super().__init__()
-        self.pool_predict = pool_predict
-        self.disable_decoder_masking = disable_decoder_masking
 
-        self.decoder = nn.ModuleList()
-        for _ in range(depth):
-            self.decoder.append(
-                SetAttentionBlock(
-                    dim=dim,
-                    heads=heads,
-                    dim_head=dim_head,
-                    mlp_dim=mlp_dim,
-                    attn_dropout=attn_dropout,
-                    ff_dropout=ff_dropout,
-                    use_setnorm=use_setnorm,
-                    sdp_backend=sdp_backend,
-                )
-            )
+        if set_predictor_dct is None:
+            set_predictor_dct = {}
 
-        self.predict = SetPredictorNet(
-            dim=dim,
-            num_seeds=num_seeds,
-            inner_dim=mlp_dim,
-            dim_out=dim_out,
-            act_out=act_out,
-            depth=depth_predict,
-            act=act_predict,
-            pool_predict=pool_predict,
-            ff_dropout=ff_dropout,
+        if seed_strategy == "pooling":
+            num_seeds = 1
+        elif seed_strategy == "objects":
+            num_seeds = sum(object_dimensions.values())
+        elif seed_strategy == "particles":
+            num_seeds = len(object_dimensions)
+        else:
+            raise ValueError(f"Invalid seed_strategy: {seed_strategy}, must be 'pooling', 'objects' or 'particles'.")
+
+        self.num_seeds = num_seeds
+
+        if embedding_config_dct is None:
+            embedding_config_dct = {}
+
+        self.jagged_preprocessor = JaggedPreprocessor(
+            embedding_dim=embedding_dim,
+            numer_idx=numer_idx,
+            categ_idx=categ_idx,
+            categories=categories,
+            numer_padding_tokens=numer_padding_tokens,
+            categ_padding_tokens=categ_padding_tokens,
+            numer_feature_wise_linear=embedding_config_dct.get("numer_feature_wise_linear", False),
+            reduction=embedding_config_dct.get("reduction", "mean"),
+            conv1d_embedding=embedding_config_dct.get("conv1d_embedding", False),
+            post_embeddings_dct=embedding_config_dct.get("post_embeddings_dct", None),
+            ple_dct=embedding_config_dct.get("ple_config", None),
+            add_particle_types=add_particle_types,
         )
 
-    def forward(
-        self,
-        x: torch.Tensor,
-        x_events: torch.Tensor,
-        attn_mask: torch.Tensor | None = None,
-        set_q_mask: torch.Tensor | None = None,
-        set_kv_mask: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        for block in self.decoder:
-            if self.disable_decoder_masking:
-                x = block(x, context=x_events, attn_mask=None, set_q_mask=None, set_kv_mask=None)
-            else:
-                x = block(x, context=x_events, attn_mask=attn_mask, set_q_mask=set_q_mask, set_kv_mask=set_kv_mask)
+        self.set_jagged_transformer = SetTransformerModel(
+            dim=embedding_dim,
+            encoder_depth=encoder_depth,
+            decoder_depth=decoder_depth,
+            heads=heads,
+            dim_head=dim_head,
+            mlp_dim=2 * ff_hidden_mult * embedding_dim,
+            num_seeds=self.num_seeds,
+            dim_out=dim_out,
+            act_out=act_out,
+            attn_dropout=attn_dropout,
+            ff_dropout=ff_dropout,
+            act_predict=set_predictor_dct.get("act", "ReLU"),
+            depth_predict=set_predictor_dct.get("depth", 1),
+            pool_predict=set_predictor_dct.get("mean_pooling", False),
+            use_predict=True,
+            use_setnorm=use_setnorm,
+            first_attn_no_residual=first_attn_no_residual,
+            sdp_backend=sdp_backend,
+        )
 
-        x = self.predict(x)
+        if flat_fuse is None:
+            flat_fuse = {}
 
-        return x
+        self.flat_model = flat_model
+
+        if flat_model is not None:
+            self.fuser = FlatJaggedFuser(
+                flat_fuse.get("mode", "add"),
+                output_dim=dim_out,
+                fuse_kwargs=flat_fuse.get("fuse_kwargs", None),
+            )
+
+    def forward(self, X_events: torch.Tensor, *Xs: torch.Tensor) -> torch.Tensor:
+        x_jagged, x_jagged_valid = self.jagged_preprocessor(*Xs)
+        x_jagged_object_mask = rearrange(x_jagged_valid, "b i -> b 1 1 i")
+
+        x_pooling_valid = torch.ones(x_jagged.shape[0], self.num_seeds, dtype=torch.bool, device=x_jagged.device)
+
+        x_jagged_pooling_mask = x_jagged_object_mask.expand(-1, 1, self.num_seeds, -1)
+
+        x_jagged_set_out = self.set_jagged_transformer(
+            x_jagged,
+            attn_mask=x_jagged_object_mask,
+            set_q_mask=x_jagged_valid,
+            set_kv_mask=x_jagged_valid,
+            pooling_attn_mask=x_jagged_pooling_mask,
+            pooling_set_q_mask=x_pooling_valid,
+            pooling_set_kv_mask=x_jagged_valid,
+        )
+
+        if self.flat_model is not None:
+            flat_out = self.flat_model(X_events)
+            return self.fuser(flat_out, x_jagged_set_out)
+
+        return x_jagged_set_out
