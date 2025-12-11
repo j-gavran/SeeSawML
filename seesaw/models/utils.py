@@ -14,6 +14,7 @@ from f9columnar.utils.helpers import load_json, load_pickle
 from omegaconf import DictConfig, ListConfig, open_dict
 
 from seesaw.models.deep_sets import FlatDeepSets, JaggedDeepsets
+from seesaw.models.flat_preprocessor import FlatPreprocessor
 from seesaw.models.mlp import MLP
 from seesaw.models.nn_modules import BaseLightningModule
 from seesaw.models.res_net import ResNet
@@ -60,10 +61,14 @@ def _build_events_network(
     selection: ColumnSelection,
     dataset_conf: DictConfig,
     architecture_config: DictConfig,
+    override_model_name: str | None = None,
 ) -> nn.Module:
     events_selection = selection["events"]
 
     model_name = architecture_config.model
+
+    if override_model_name is not None:
+        model_name = override_model_name
 
     categ_columns = events_selection.categ_columns
     numer_columns_idx = events_selection.offset_numer_columns_idx
@@ -80,8 +85,6 @@ def _build_events_network(
     if output_dim == 2:
         output_dim = 1
 
-    logging.info(f"Model output dimension {output_dim}.")
-
     embedding_config = architecture_config.get("embeddings", None)
     post_embeddings_config = architecture_config.get("post_embeddings", None)
 
@@ -90,36 +93,7 @@ def _build_events_network(
     else:
         embedding_config = {}
 
-    if embedding_config.get("ple", None) is not None:
-        n_bins = dataset_conf.get("ple_bins", None)
-
-        if n_bins is None:
-            raise ValueError("ple_bins must be specified in dataset_config for using PLE!")
-
-        if isinstance(embedding_config["ple"], DictConfig):
-            embeddings_ple_config = dict(embedding_config["ple"])
-            use_ple = True
-        elif embedding_config["ple"] is True:
-            embeddings_ple_config = {}
-            use_ple = True
-        else:
-            use_ple = False
-
-        if use_ple:
-            ple_config = {}
-
-            ple_config["n_bins"] = n_bins
-            ple_config["learn_bins"] = embeddings_ple_config.get("learn_bins", False)
-            ple_config["uniform_bins"] = embeddings_ple_config.get("uniform_bins", False)
-            ple_config["act"] = embeddings_ple_config.get("act", None)
-            ple_config["dropout"] = embeddings_ple_config.get("dropout", 0.0)
-            ple_config["layernorm"] = embeddings_ple_config.get("layernorm", False)
-            ple_config["ple_file_hash_str"] = str(dataset_conf.files) + str(sorted(dataset_conf.features)) + str(n_bins)
-            embedding_config.pop("ple")
-        else:
-            ple_config = None
-    else:
-        ple_config = None
+    ple_config = get_ple_config(embedding_config, dataset_conf)
 
     embedding_config["ple_config"] = ple_config
 
@@ -127,7 +101,39 @@ def _build_events_network(
         embedding_config["post_embeddings_dct"] = dict(post_embeddings_config)
 
     model: nn.Module
-    if model_name == "MLP":
+
+    if model_name == "embeddings":
+        flat_embedding_config = architecture_config.get("flat_embeddings", {})
+        flat_ple_config = get_ple_config(flat_embedding_config, dataset_conf)
+
+        embedding_dim = flat_embedding_config.get("embedding_dim", None)
+        if embedding_dim is None:
+            embedding_dim = architecture_config.get("embedding_dim", 64)
+
+        reduction = flat_embedding_config.get("reduction", "mean")
+
+        flat_embeddings_fuse = architecture_config.get("flat_embeddings_fuse", {})
+        if flat_embeddings_fuse.get("mode", None) == "attn" or flat_embeddings_fuse.get("mode", None) == "res_attn":
+            logging.info("Setting embedding reduction to None for attention-based fusion.")
+            reduction = None
+
+        if flat_embeddings_fuse.get("mode", None) == "cat":
+            if embedding_dim % 2 != 0:
+                raise ValueError("Embedding dimension must be even when using 'cat' fusion for flat embeddings.")
+            embedding_dim = embedding_dim // 2
+
+        model = FlatPreprocessor(
+            embedding_dim=embedding_dim,
+            numer_idx=numer_columns_idx,
+            categ_idx=categ_columns_idx,
+            categories=categories,
+            embedding_reduction=reduction,
+            numer_feature_wise_linear=flat_embedding_config.get("numer_feature_wise_linear", False),
+            post_embeddings_dct=architecture_config.get("post_flat_embeddings", None),
+            ple_dct=flat_ple_config,
+            disable_embeddings=False,
+        )
+    elif model_name == "MLP":
         if architecture_config.get("layers_dim", None) is None:
             layers_dim = None
         else:
@@ -309,8 +315,6 @@ def _build_jagged_network(
     if output_dim == 2:
         output_dim = 1
 
-    logging.info(f"Model output dimension {output_dim}.")
-
     embedding_config = architecture_config.get("embeddings", None)
     post_embeddings_config = architecture_config.get("post_embeddings", None)
 
@@ -319,43 +323,24 @@ def _build_jagged_network(
     else:
         embedding_config = {}
 
-    if embedding_config.get("ple", None) is not None:
-        n_bins = dataset_conf.get("ple_bins", None)
-
-        if n_bins is None:
-            raise ValueError("ple_bins must be specified in dataset_config for using PLE!")
-
-        if isinstance(embedding_config["ple"], DictConfig):
-            embeddings_ple_config = dict(embedding_config["ple"])
-            use_ple = True
-        elif embedding_config["ple"] is True:
-            embeddings_ple_config = {}
-            use_ple = True
-        else:
-            use_ple = False
-
-        if use_ple:
-            ple_config = {}
-
-            ple_config["n_bins"] = n_bins
-            ple_config["learn_bins"] = embeddings_ple_config.get("learn_bins", False)
-            ple_config["uniform_bins"] = embeddings_ple_config.get("uniform_bins", False)
-            ple_config["act"] = embeddings_ple_config.get("act", None)
-            ple_config["dropout"] = embeddings_ple_config.get("dropout", 0.0)
-            ple_config["layernorm"] = embeddings_ple_config.get("layernorm", False)
-            ple_config["ple_file_hash_str"] = str(dataset_conf.files) + str(sorted(dataset_conf.features)) + str(n_bins)
-            embedding_config.pop("ple")
-        else:
-            ple_config = None
-    else:
-        ple_config = None
+    ple_config = get_ple_config(embedding_config, dataset_conf)
 
     embedding_config["ple_config"] = ple_config
 
     if post_embeddings_config is not None:
         embedding_config["post_embeddings_dct"] = dict(post_embeddings_config)
 
-    if "flat_model_config" in architecture_config:
+    if architecture_config.get("flat_embeddings", None) is not None:
+        flat_embeddings = _build_events_network(
+            selection=selection,
+            dataset_conf=dataset_conf,
+            architecture_config=architecture_config,
+            override_model_name="embeddings",
+        )
+    else:
+        flat_embeddings = None
+
+    if architecture_config.get("flat_model_config", None) is not None:
         flat_model_arhitecture = architecture_config.flat_model_config.architecture_config
         events_model = _build_events_network(
             selection=selection,
@@ -397,7 +382,7 @@ def _build_jagged_network(
             embedding_config_dct=embedding_config,
             add_particle_types=architecture_config.get("add_particle_types", False),
             flat_model=events_model,
-            flat_fuse=architecture_config.get("flat_fuse", {}),
+            flat_model_fuse=architecture_config.get("flat_model_fuse", {}),
             **architecture_config.get("act_kwargs", {}),
         )
     elif model_name == "SetTransformer":
@@ -421,10 +406,12 @@ def _build_jagged_network(
             seed_strategy=architecture_config.get("seed_strategy", "pooling"),
             set_predictor_dct=dict(architecture_config.get("set_predictor", {})),
             embedding_config_dct=embedding_config,
-            use_setnorm=architecture_config.get("use_setnorm", True),
+            use_setnorm=architecture_config.get("use_setnorm", False),
             add_particle_types=architecture_config.get("add_particle_types", False),
+            flat_embeddings=flat_embeddings,
+            flat_embeddings_fuse=architecture_config.get("flat_embeddings_fuse", {}),
             flat_model=events_model,
-            flat_fuse=architecture_config.get("flat_fuse", {}),
+            flat_model_fuse=architecture_config.get("flat_model_fuse", {}),
             first_attn_no_residual=architecture_config.get("first_attn_no_residual", False),
             sdp_backend=architecture_config.get("sdp_backend", None),
         )
@@ -432,6 +419,41 @@ def _build_jagged_network(
         raise NotImplementedError("The model set in the params is not yet implemented!")
 
     return model
+
+
+def get_ple_config(embedding_config: DictConfig, dataset_conf: DictConfig) -> dict[str, Any] | None:
+    if embedding_config.get("ple", None) is not None:
+        n_bins = dataset_conf.get("ple_bins", None)
+
+        if n_bins is None:
+            raise ValueError("ple_bins must be specified in dataset_config for using PLE!")
+
+        if isinstance(embedding_config["ple"], DictConfig):
+            embeddings_ple_config = dict(embedding_config["ple"])
+            use_ple = True
+        elif embedding_config["ple"] is True:
+            embeddings_ple_config = {}
+            use_ple = True
+        else:
+            use_ple = False
+
+        if use_ple:
+            ple_config = {}
+
+            ple_config["n_bins"] = n_bins
+            ple_config["learn_bins"] = embeddings_ple_config.get("learn_bins", False)
+            ple_config["uniform_bins"] = embeddings_ple_config.get("uniform_bins", False)
+            ple_config["act"] = embeddings_ple_config.get("act", None)
+            ple_config["dropout"] = embeddings_ple_config.get("dropout", 0.0)
+            ple_config["layernorm"] = embeddings_ple_config.get("layernorm", False)
+            ple_config["ple_file_hash_str"] = str(dataset_conf.files) + str(sorted(dataset_conf.features)) + str(n_bins)
+            embedding_config.pop("ple")
+        else:
+            ple_config = None
+    else:
+        ple_config = None
+
+    return ple_config
 
 
 def build_network(

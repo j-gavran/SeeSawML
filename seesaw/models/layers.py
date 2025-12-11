@@ -2,6 +2,7 @@ import math
 from typing import Any
 
 import torch
+from einops import rearrange
 from torch import nn
 
 from seesaw.models.activations import get_activation
@@ -189,14 +190,14 @@ class MeanPoolingLayer(nn.Module):
         return x.squeeze(self.dim) if not self.keepdim else x
 
 
-class FlatJaggedFuser(nn.Module):
+class FlatJaggedModelFuser(nn.Module):
     def __init__(self, fuse_mode: str, output_dim: int | None, fuse_kwargs: dict[str, Any] | None = None) -> None:
         """Fusing layer to combine flat and jagged inputs coming from a flat model and a jagged model.
 
         Parameters
         ----------
         fuse_mode : str
-            Mode of fusion. Options are 'add', 'cat', 'learn', 'gate', 'attn'.
+            Mode of fusion. Options are 'add', 'cat' (recommended), 'learn', 'gate', 'attn' (experimental).
         output_dim : int | None
             Expected output dimension. If None, will be 1.
         fuse_kwargs : dict[str, Any] | None, optional
@@ -231,7 +232,6 @@ class FlatJaggedFuser(nn.Module):
 
         if self.fuse_attn:
             embedding_dim = fuse_kwargs.get("embedding_dim", 64)
-            dropout = fuse_kwargs.get("dropout", 0.1)
 
             self.flat_proj = nn.Linear(output_dim, embedding_dim)
             self.jagged_proj = nn.Linear(output_dim, embedding_dim)
@@ -240,7 +240,7 @@ class FlatJaggedFuser(nn.Module):
                 dim=embedding_dim,
                 heads=fuse_kwargs.get("heads", 4),
                 dim_head=fuse_kwargs.get("dim_head", 16),
-                attn_dropout=dropout,
+                attn_dropout=fuse_kwargs.get("dropout", 0.1),
                 normalize_q=True,
                 dim_out=output_dim,
                 sdp_backend=fuse_kwargs.get("sdp_backend", None),
@@ -265,3 +265,100 @@ class FlatJaggedFuser(nn.Module):
             return attn.squeeze(1)
         else:
             raise RuntimeError(f"Fuse mode {self.fuse_add} not recognized!")
+
+
+class FlatJaggedEmbeddingsFuser(nn.Module):
+    def __init__(
+        self,
+        fuse_mode: str,
+        output_dim: int,
+        fuse_kwargs: dict[str, Any] | None = None,
+    ) -> None:
+        """Fusing layer to combine flat and jagged inputs coming from flat embeddings and jagged embeddings.
+
+        Parameters
+        ----------
+        fuse_mode : str
+            Mode of fusion. Options are 'sum', 'mean', 'add', 'cat' (recommended), 'cat_proj', 'learn', 'gate',
+            'attn' (experimental), 'res_attn' (experimental).
+        output_dim : int
+            Expected output dimension.
+        fuse_kwargs : dict[str, Any] | None, optional
+            Additional keyword arguments for specific fusion modes, by default None.
+
+        Note
+        ----
+        Should be used at the end of a model combining flat and jagged inputs.
+
+        """
+        super().__init__()
+
+        if fuse_kwargs is None:
+            fuse_kwargs = {}
+
+        self.fuse_sum = fuse_mode == "sum"
+        self.fuse_mean = fuse_mode == "mean"
+        self.fuse_add = fuse_mode == "add"
+        self.fuse_cat = fuse_mode == "cat"
+        self.fuse_cat_proj = fuse_mode == "cat_proj"
+        self.fuse_learn = fuse_mode == "learn"
+        self.fuse_gate = fuse_mode == "gate"
+        self.fuse_attn = fuse_mode == "attn"
+        self.fuse_res_attn = fuse_mode == "res_attn"
+
+        if self.fuse_cat_proj:
+            self.cat_project = nn.Linear(2 * output_dim, output_dim)
+
+        if self.fuse_learn:
+            self.alpha_param = nn.Parameter(torch.tensor(0.5), requires_grad=True)
+
+        if self.fuse_gate:
+            self.gate = nn.Sequential(nn.Linear(2 * output_dim, output_dim), nn.Sigmoid())
+
+        if self.fuse_attn:
+            self.attn_layer = CrossAttention(
+                dim=output_dim,
+                heads=fuse_kwargs.get("heads", 4),
+                dim_head=fuse_kwargs.get("dim_head", 16),
+                attn_dropout=fuse_kwargs.get("dropout", 0.1),
+                normalize_q=True,
+                dim_out=output_dim,
+                sdp_backend=fuse_kwargs.get("sdp_backend", None),
+            )
+
+    def forward(self, flat_x: torch.Tensor, jagged_x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
+        if not self.fuse_attn:
+            flat_x = rearrange(flat_x, "b e -> b 1 e")
+
+        if self.fuse_sum:
+            fused = jagged_x + torch.sum(flat_x, dim=-1, keepdim=True)
+        elif self.fuse_mean:
+            fused = jagged_x + torch.mean(flat_x, dim=-1, keepdim=True)
+        elif self.fuse_add:
+            fused = flat_x + jagged_x
+        elif self.fuse_cat:
+            flat_x_expanded = flat_x.expand(-1, jagged_x.shape[1], -1)
+            fused = torch.cat([flat_x_expanded, jagged_x], dim=-1)
+        elif self.fuse_cat_proj:
+            flat_x_expanded = flat_x.expand(-1, jagged_x.shape[1], -1)
+            fused = self.cat_project(torch.cat([flat_x_expanded, jagged_x], dim=-1))
+        elif self.fuse_learn:
+            alpha = torch.sigmoid(self.alpha_param)
+            fused = alpha * flat_x + (1 - alpha) * jagged_x
+        elif self.fuse_gate:
+            flat_x_expanded = flat_x.expand(-1, jagged_x.shape[1], -1)
+            gate_score = self.gate(torch.cat([flat_x_expanded, jagged_x], dim=-1))
+            fused = gate_score * flat_x + (1 - gate_score) * jagged_x
+        elif self.fuse_attn:
+            fused = self.attn_layer(jagged_x, context=flat_x)
+        elif self.fuse_res_attn:
+            attn_out = self.attn_layer(jagged_x, context=flat_x)
+            fused = jagged_x + attn_out
+        else:
+            raise RuntimeError("Fuse mode not recognized!")
+
+        if mask is not None:
+            mask = rearrange(mask, "b o -> b o 1")
+            fused = fused.masked_fill(mask, 0.0)
+
+        return fused

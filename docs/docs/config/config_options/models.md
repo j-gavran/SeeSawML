@@ -290,9 +290,9 @@ Implements feature tokenzier transformer from [https://arxiv.org/abs/2106.11959]
 
 #### Set Transformer
 
-Implements set transformer from [https://arxiv.org/abs/1810.00825](https://arxiv.org/abs/1810.00825). The model is used for jagged input features or for jagged feature with flat features. Each object (e.g. jet, electron, etc.) is first embedded using the jagged embedding module described above and then passed through a series of Set Transformer encoder layers. The output of the transformer is then pooled and passed through a final MLP for classification. The model is permutation invariant to the order of the input objects.
+Implements the Set Transformer model ([https://arxiv.org/abs/1810.00825](https://arxiv.org/abs/1810.00825)). The model is used for jagged input features. Each object (e.g. jet, electron, etc.) is first embedded using the jagged embedding module described above and then passed through a series of Set Transformer encoder layers. The output of the transformer is then pooled and passed through a final MLP for classification. The model is permutation invariant to the order of the input objects.
 
-- `model: JaggedTransformer`: Specifies the model architecture.
+- `model: SetTransformer`: Specifies the model architecture.
 - `embedding_dim: int`: Dimension of the embedding.
 - `heads: int`: Number of attention heads.
 - `dim_head: int`: Dimension of each attention head.
@@ -307,12 +307,8 @@ Implements set transformer from [https://arxiv.org/abs/1810.00825](https://arxiv
     - `mean_pooling: bool`: Whether to use mean pooling before the MLP, by default `false`. If `false` reshapes the output before feeding to MLP.
 - `encoder_depth: int`: Number of encoder layers.
 - `decoder_depth: int`: Number of decoder layers, if number of seed vectors is greater than 1.
-- `set_transform_events: bool`: Whether to train another set transformer for flat features, by default `false`.
-- `cross_decoder_depth: int`: Number of cross attention layers if events are enabled and seed vectors are greater than 1.
-- `cross_decoder_pool: bool`: Whether to use pooling in cross attention layers, by default `false`. If `false` reshapes the output before feeding to MLP.
-- `cross_decoder_act: str`: Activation function for cross attention layers.
-- `debug_masks: bool`: Whether to enable debug mode for masks, by default `false`.
 - `add_particle_types: bool`: Whether to add particle type embeddings to jagged features, by default `false`.
+- `first_attn_no_residual: bool`: Whether to remove the residual connection from the first attention layer, by default `false`.
 - `compile: bool`: Whether to compile the model using `torch.compile` for improved performance, by default `false`.
 - `compile_kwargs: dict[str | Any]`: Additional keyword arguments to pass to `torch.compile`, by default `null`.
 - `sdp_backend: dict[str, bool] | None`: Specifies the backend for scaled dot-product attention, by default `null`.
@@ -368,15 +364,6 @@ Implements set transformer from [https://arxiv.org/abs/1810.00825](https://arxiv
     - `objects`: $k$ is set to the number of objects (e.g., jets, electrons, etc.).
 
     If $k>1$ a decoder layer is constructed after the encoder using `encoder_depth` that has the same structure as the encoder.
-
-!!! Note
-    If flat features are enabled by `set_transform_events: true`, another set transformer is constructed for flat features by reshaping to $(B, 1, F\cdot E)$ and passing through a projection layer to get $(B, 1, E)$. If $k>1$, outputs from both jagged and flat transformers are combined using cross attention layers specified by `cross_decoder_depth`, `cross_decoder_pool` and `cross_decoder_act`. If $k=1$, outputs are simply added together and passed to the final MLP.
-
-!!! Note
-    Attention masking for padded values is automatically handled in the implementation. If `debug_masks` is set to `true`, the attention masks are logged during training for debugging purposes. The mask is built by calculating an outer product of the input masks for each object:
-    $$
-    \mathrm{outer}_{b, i, j} = \mathrm{valid}_i [b, i] \land \text{valid}_j[b, j] .
-    $$
 
 ## Model Calibration
 

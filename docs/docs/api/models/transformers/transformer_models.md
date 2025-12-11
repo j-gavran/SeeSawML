@@ -4,6 +4,6 @@
     options:
         show_root_heading: true
 
-::: seesaw.models.transformers.jagged_transformer
+::: seesaw.models.transformers.set_transformer
     options:
         show_root_heading: true

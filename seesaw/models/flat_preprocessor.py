@@ -182,6 +182,7 @@ class FlatPreprocessor(nn.Module):
         disable_embeddings: bool = False,
     ) -> None:
         super().__init__()
+        self.embedding_dim = embedding_dim
         self.disable_embeddings = disable_embeddings
 
         self.mean_reduction = embedding_reduction == "mean"
@@ -205,6 +206,9 @@ class FlatPreprocessor(nn.Module):
             self._setup_post_embeddings(embedding_dim, post_embeddings_dct)
         else:
             logging.warning("Embeddings are disabled in FlatPreprocessor!")
+
+        if self.reshape_reduction:
+            self.reshape_proj = nn.Linear((len(numer_idx) + len(categ_idx)) * embedding_dim, embedding_dim)
 
         if self.conv1d_reduction:
             self.conv1d_reduction_layer = nn.Conv1d(in_channels=embedding_dim, out_channels=1, kernel_size=1)
@@ -278,21 +282,7 @@ class FlatPreprocessor(nn.Module):
             self._output_dim = n_features
             return None
 
-        output_dim = 0
-
-        if self.has_numer:
-            if self.reshape_reduction:
-                output_dim += embedding_dim * len(numer_idx)
-            else:
-                output_dim = embedding_dim
-
-        if self.has_categ:
-            if self.reshape_reduction:
-                output_dim += embedding_dim * len(categ_idx)
-            else:
-                output_dim = embedding_dim
-
-        self._output_dim = output_dim
+        self._output_dim = embedding_dim
 
     @property
     def output_dim(self) -> int:
@@ -332,7 +322,7 @@ class FlatPreprocessor(nn.Module):
         if self.mean_reduction:
             x_embedded = torch.mean(x_embedded, dim=1)
         elif self.reshape_reduction:
-            x_embedded = rearrange(x_embedded, "b f e -> b (f e)")
+            x_embedded = self.reshape_proj(rearrange(x_embedded, "b f e -> b (f e)"))
         elif self.conv1d_reduction:
             x_embedded = rearrange(x_embedded, "b f e -> b e f")
             x_embedded = self.conv1d_reduction_layer(x_embedded).squeeze(dim=1)

@@ -7,7 +7,7 @@ from einops.layers.torch import Rearrange
 from torch import nn
 
 from seesaw.models.jagged_preprocessor import JaggedPreprocessor
-from seesaw.models.layers import FlatJaggedFuser
+from seesaw.models.layers import FlatJaggedEmbeddingsFuser, FlatJaggedModelFuser
 from seesaw.models.mlp import FeedForwardLayer
 from seesaw.models.transformers.attention import Attend
 from seesaw.models.transformers.ff_blocks import GeGLUNet
@@ -406,10 +406,12 @@ class SetTransformer(nn.Module):
         seed_strategy: str = "pooling",
         set_predictor_dct: dict[str, Any] | None = None,
         embedding_config_dct: dict[str, Any] | None = None,
-        use_setnorm: bool = True,
+        use_setnorm: bool = False,
         add_particle_types: bool = False,
+        flat_embeddings: nn.Module | None = None,
+        flat_embeddings_fuse: dict[str, Any] | None = None,
         flat_model: nn.Module | None = None,
-        flat_fuse: dict[str, Any] | None = None,
+        flat_model_fuse: dict[str, Any] | None = None,
         first_attn_no_residual: bool = False,
         sdp_backend: dict[str, bool] | None = None,
     ) -> None:
@@ -417,6 +419,15 @@ class SetTransformer(nn.Module):
 
         if set_predictor_dct is None:
             set_predictor_dct = {}
+
+        if embedding_config_dct is None:
+            embedding_config_dct = {}
+
+        if flat_embeddings_fuse is None:
+            flat_embeddings_fuse = {}
+
+        if flat_model_fuse is None:
+            flat_model_fuse = {}
 
         if seed_strategy == "pooling":
             num_seeds = 1
@@ -429,11 +440,13 @@ class SetTransformer(nn.Module):
 
         self.num_seeds = num_seeds
 
-        if embedding_config_dct is None:
-            embedding_config_dct = {}
+        if flat_embeddings_fuse.get("mode", None) == "cat":
+            jagged_embedding_dim = embedding_dim // 2
+        else:
+            jagged_embedding_dim = embedding_dim
 
         self.jagged_preprocessor = JaggedPreprocessor(
-            embedding_dim=embedding_dim,
+            embedding_dim=jagged_embedding_dim,
             numer_idx=numer_idx,
             categ_idx=categ_idx,
             categories=categories,
@@ -468,16 +481,23 @@ class SetTransformer(nn.Module):
             sdp_backend=sdp_backend,
         )
 
-        if flat_fuse is None:
-            flat_fuse = {}
+        self.flat_embeddings = flat_embeddings
+        self.disable_flat_embeddings_mask = True if embedding_config_dct.get("ple_config", None) is not None else False
+
+        if flat_embeddings is not None:
+            self.embeddings_fuser = FlatJaggedEmbeddingsFuser(
+                flat_embeddings_fuse.get("mode", "add"),
+                output_dim=embedding_dim,
+                fuse_kwargs=flat_embeddings_fuse.get("fuse_kwargs", None),
+            )
 
         self.flat_model = flat_model
 
         if flat_model is not None:
-            self.fuser = FlatJaggedFuser(
-                flat_fuse.get("mode", "add"),
+            self.model_fuser = FlatJaggedModelFuser(
+                flat_model_fuse.get("mode", "add"),
                 output_dim=dim_out,
-                fuse_kwargs=flat_fuse.get("fuse_kwargs", None),
+                fuse_kwargs=flat_model_fuse.get("fuse_kwargs", None),
             )
 
     def forward(self, X_events: torch.Tensor, *Xs: torch.Tensor) -> torch.Tensor:
@@ -487,6 +507,12 @@ class SetTransformer(nn.Module):
         x_pooling_valid = torch.ones(x_jagged.shape[0], self.num_seeds, dtype=torch.bool, device=x_jagged.device)
 
         x_jagged_pooling_mask = x_jagged_object_mask.expand(-1, 1, self.num_seeds, -1)
+
+        if self.flat_embeddings is not None:
+            x_flat = self.flat_embeddings(X_events)
+            x_jagged = self.embeddings_fuser(
+                x_flat, x_jagged, mask=None if self.disable_flat_embeddings_mask else x_jagged_valid
+            )
 
         x_jagged_set_out = self.set_jagged_transformer(
             x_jagged,
@@ -500,6 +526,6 @@ class SetTransformer(nn.Module):
 
         if self.flat_model is not None:
             flat_out = self.flat_model(X_events)
-            return self.fuser(flat_out, x_jagged_set_out)
+            return self.model_fuser(flat_out, x_jagged_set_out)
 
         return x_jagged_set_out

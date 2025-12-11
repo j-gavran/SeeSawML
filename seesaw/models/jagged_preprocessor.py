@@ -499,7 +499,7 @@ class JaggedPreprocessor(nn.Module):
                             nn.Linear(total_features * embedding_dim, embedding_dim),
                         ),
                         first_mask_rearrange=Rearrange("b o -> b o 1 1") if not self.use_ple else None,
-                        skip_second_mask=True,
+                        second_mask_rearrange=Rearrange("b o -> b o 1") if not self.use_ple else None,
                     )
                 )
             elif reduction == "conv1d":
@@ -635,24 +635,3 @@ class JaggedPreprocessor(nn.Module):
         x_jagged_masks = torch.cat(jagged_masks, dim=1)  # padded: True, valid: False
 
         return x_jagged, x_jagged_masks
-
-
-def build_adjacency_attention_mask(invalid: torch.Tensor) -> torch.Tensor:
-    """Computes adjacency attention mask from valid (i, j) mask.
-
-    Position i is batch, j is object. If object does no exist (padded), then invalid j is True.
-
-    The mask is passed to the pre-softmax attention scores, where True values are masked (set to -inf).
-
-    Parameters
-    ----------
-    invalid : torch.Tensor
-        Valid mask of shape (i, j), where True indicates padded (not present) entries.
-
-    Returns
-    -------
-    torch.Tensor
-        Adjacency attention mask of shape (b, 1, i, j).
-    """
-    mask = invalid[:, :, None] | invalid[:, None, :]
-    return rearrange(mask, "b i j -> b 1 i j")

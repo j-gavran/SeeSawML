@@ -8,7 +8,7 @@ from einops import rearrange
 from seesaw.models.activations import get_activation
 from seesaw.models.flat_preprocessor import FlatPreprocessor
 from seesaw.models.jagged_preprocessor import JaggedPreprocessor
-from seesaw.models.layers import FlatJaggedFuser
+from seesaw.models.layers import FlatJaggedEmbeddingsFuser, FlatJaggedModelFuser
 
 
 def _handle_layers_params(
@@ -177,15 +177,24 @@ class JaggedDeepsets(nn.Module):
         mean_pooling: bool = True,
         embedding_config_dct: dict[str, Any] | None = None,
         add_particle_types: bool = False,
+        flat_embeddings: nn.Module | None = None,
+        flat_embeddings_fuse: dict[str, Any] | None = None,
         flat_model: nn.Module | None = None,
-        flat_fuse: dict[str, Any] | None = None,
+        flat_model_fuse: dict[str, Any] | None = None,
         **act_kwargs,
     ) -> None:
         super().__init__()
-        self.mean_pooling = mean_pooling
+
+        if embedding_config_dct is None:
+            embedding_config_dct = {}
+
+        if flat_embeddings_fuse is None:
+            flat_embeddings_fuse = {}
+
+        if flat_model_fuse is None:
+            flat_model_fuse = {}
 
         objects_idx = []
-
         for i, dim in enumerate(object_dimensions.values()):
             objects_idx.extend([i] * dim)
 
@@ -196,14 +205,18 @@ class JaggedDeepsets(nn.Module):
             encoder_layers, decoder_layers, n_hidden, embedding_dim, output_dim
         )
 
+        self.mean_pooling = mean_pooling
+
         if not mean_pooling:
             decoder_layers_dim[0] = decoder_layers_dim[0] * len(object_dimensions)
 
-        if embedding_config_dct is None:
-            embedding_config_dct = {}
+        if flat_embeddings_fuse.get("mode", None) == "cat":
+            jagged_embedding_dim = embedding_dim // 2
+        else:
+            jagged_embedding_dim = embedding_dim
 
         self.jagged_preprocessor = JaggedPreprocessor(
-            embedding_dim=embedding_dim,
+            embedding_dim=jagged_embedding_dim,
             numer_idx=numer_idx,
             categ_idx=categ_idx,
             categories=categories,
@@ -228,28 +241,41 @@ class JaggedDeepsets(nn.Module):
             **act_kwargs,
         )
 
-        if flat_fuse is None:
-            flat_fuse = {}
+        self.flat_embeddings = flat_embeddings
+        self.disable_flat_embeddings_mask = True if embedding_config_dct.get("ple_config", None) is not None else False
+
+        if flat_embeddings is not None:
+            self.embeddings_fuser = FlatJaggedEmbeddingsFuser(
+                flat_embeddings_fuse.get("mode", "add"),
+                output_dim=embedding_dim,
+                fuse_kwargs=flat_embeddings_fuse.get("fuse_kwargs", None),
+            )
 
         self.flat_model = flat_model
 
         if flat_model:
-            self.fuser = FlatJaggedFuser(
-                flat_fuse["mode"],
+            self.fuser = FlatJaggedModelFuser(
+                flat_model_fuse["mode"],
                 output_dim=output_dim,
-                fuse_kwargs=flat_fuse.get("fuse_kwargs", None),
+                fuse_kwargs=flat_model_fuse.get("fuse_kwargs", None),
             )
 
     def forward(self, X_events: torch.Tensor, *Xs: torch.Tensor) -> torch.Tensor:
         # N x (batch_size, n_objects, features) -> (batch_size, n_objects, embedding_dim)
-        x, x_valid = self.jagged_preprocessor(*Xs)
+        x_jagged, x_jagged_valid = self.jagged_preprocessor(*Xs)
 
-        x = rearrange(x, "b o e -> b e o")
+        if self.flat_embeddings is not None:
+            x_flat = self.flat_embeddings(X_events)
+            x_jagged = self.embeddings_fuser(
+                x_flat, x_jagged, mask=None if self.disable_flat_embeddings_mask else x_jagged_valid
+            )
+
+        x = rearrange(x_jagged, "b o e -> b e o")
 
         out = self.phi(x)  # (batch_size, embedding_dim, n_objects)
 
         object_idx = self.object_idx.repeat(x.shape[0], 1)
-        object_idx[~x_valid] = self.max_object_idx
+        object_idx[x_jagged_valid] = self.max_object_idx
         object_idx = object_idx.unsqueeze(1).expand(-1, out.shape[1], -1)
 
         shapes = (out.shape[0], out.shape[1], self.max_object_idx + 1)
