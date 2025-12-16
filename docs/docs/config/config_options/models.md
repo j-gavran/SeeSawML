@@ -155,6 +155,18 @@ The `architecture_config` can also take the `post_embeddings` field to specify a
 
     More specifically in the jagged case, the input to is of shape $K \times (B, P_k, F_k)$ where $K$ is the number of objects (e.g. jets, electrons, etc.), $B$ is the batch size, $P$ is the maximum number of particles (padded) and $F$ is the number of features per object. In this case $P$ and $F$ dimensions can vary for each object $k \in K$. The output of the embedding module is of shape $K \times (B, P_k, F_k, E)$ where $E$ is the feature embedding dimension per particle. After the per object embedding, a projection layer (`reduction`) is applied to get the final shape of $K \times (B, P_k, E)$ which is then concatenated over the object dimension to get a final sequence of shape $(B, \sum_{k}^K P_k, E)$ which is then fed into the transformer model. The projection layer can be a linear layer or a 2D convolutional layer depending on the `conv2d_projection` option and is applied over the feature dimension for each object.
 
+#### Combining Flat and Jagged Embeddings
+
+Flat embeddings can be joined with the jagged embeddings by fusing them together in any jagged model configuration. That is, flat features can be embedded and then combined with jagged feature embeddings before feeding into the main model architecture.
+
+This can be done by setting the following in the jagged model `arhitecture_config`:
+
+- `flat_embeddings: dict[str | Any] | None`: Equivalent to `architecture_config.embeddings` but for flat features, by default `null`.
+- `post_flat_embeddings: dict[str | Any] | None`: Equivalent to `architecture_config.post_embeddings` but for flat features, by default `null`.
+- `flat_embeddings_fuse: dict[str | Any] | None`: Configuration for fusing flat embeddings with jagged embeddings, by default `null`.
+    - `mode: str`: Fusion mode (`sum`, `mean`, `add`, `cat`, `cat_proj`, `learn`, `gate`, `attn` or `res_attn`).
+    - `fuse_kwargs: dict[str | Any] | None`: Additional parameters for fusion method, by default `null`.
+
 ### Feedforward Neural Networks
 
 Most commonly used model architecture in SeeSawML is the feedforward neural network (FNN) also known as multi-layer perceptron (MLP). It consists of multiple fully connected layers with non-linear activation functions in between. A more advanced variant of the MLP is the ResNet architecture which includes skip connections between layers to improve gradient flow during training.
