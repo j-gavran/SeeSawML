@@ -1,6 +1,6 @@
 # Creating ML NTuples in TNAnalysis
 
-We need physics ROOT NTuples `SeeSawML` converter can read. For this example, we will be using [TNAnalysis](https://gitlab.cern.ch/tadej/TNAnalysis). On details of doing that, refer to [`TNAnalysis`](https://gitlab.cern.ch/tadej/TNAnalysis) documentation.
+We need physics ROOT NTuples `SeeSawML` converter can read. For this example, we will be using [TNAnalysis](https://gitlab.cern.ch/tadej/TNAnalysis). On details of doing that, refer to TNAnalysis documentation.
 
 To start - general idea of a preselection file is:
 

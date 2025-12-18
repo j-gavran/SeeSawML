@@ -14,7 +14,7 @@ Training dataset configuration options for saved HDF5 datasets are specified in 
     - `prefetch_factor: int`: Number of batches to prefetch.
     - `num_workers: int`: Number of subprocesses to use for data loading. Set to -1 to use all available CPU cores.
 - `dataset_kwargs: dict[str, Any]`: Additional keyword arguments to be passed to the Dataset when initializing.
-    - `imbalanced_sampler: str | None`: Type of imbalanced sampler to use (`RandomUnderSampler` or `RandomOverSampler`), by default `null` (no sampler).
+    - `imbalanced_sampler: str | None`: Type of imbalanced sampler to use (`RandomUnderSampler`, `RandomOverSampler`, or `RandomResamplerToTarget`), by default `null` (no sampler).
     - `imbalanced_sampler_kwargs: dict[str, Any]`: Additional keyword arguments to be passed to the imbalanced sampler during initialization.
     - `drop_last: bool`: Whether to drop the last incomplete batch if the dataset size is not divisible by the batch size.
 
@@ -28,6 +28,29 @@ Training dataset configuration options for saved HDF5 datasets are specified in 
         sampling_strategy: not majority
     ```
     For all alvailable options, see the [imbalanced-learn documentation](https://imbalanced-learn.org/stable/index.html).
+
+!!! Info "RandomResamplerToTarget"
+    `RandomResamplerToTarget` is a custom sampler that resamples each class to an exact target count **per pile** specified in the sampling strategy. This is particularly useful when you want precise control over class distribution in each HDF5 pile:
+
+    - If a class has **more** samples than the target count in a pile, it randomly undersamples (without replacement)
+    - If a class has **fewer** samples than the target count in a pile, it randomly oversamples (with replacement)
+    - If a class has **exactly** the target count in a pile, it keeps all samples as-is
+
+    The resampling is applied independently to each pile, and the total number of events will be: `target_count × number_of_piles`.
+
+    **Usage Example:**
+    ```yaml
+    dataset_kwargs:
+      imbalanced_sampler: RandomResamplerToTarget
+      imbalanced_sampler_kwargs:
+        sampling_strategy:
+          ttH_cc: 5000
+          ttH_bb: 5000
+          ttbar_enhanced_HF1b: 3000
+          ttbar_enhanced_HF2b: 3000
+    ```
+
+    In this example, each pile will contain exactly 5,000 `ttH_cc` events and 5,000 `ttH_bb` events, and 3,000 events each for the ttbar classes. If using 10 piles for training, the total dataset will have 50,000 `ttH_cc` events, 50,000 `ttH_bb` events, and 30,000 events per ttbar class.
 
 - `features: list[str]`: List of feature names to be used as input for the model. Both flat and jagged features can be included.
 - `feature_scaling: dict[str, Any | dict[str, Any]]`: Dictionary specifying the scaling method for each feature.

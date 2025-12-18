@@ -18,6 +18,7 @@ nav:
       - Models: config/config_options/models.md
       - Plotting: config/config_options/plotting.md
   - Examples:
+    - Model Config Examples: examples/model_configs.md
     - TNAnalysis Jobs: examples/tnanalysis.md
   - API Reference:
     - Models:
