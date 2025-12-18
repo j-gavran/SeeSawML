@@ -9,6 +9,7 @@ from torch import nn
 
 from seesaw.models.activations import get_activation
 from seesaw.models.layers import FeatureWiseLinear, MeanPoolingLayer
+from seesaw.models.masked_batchnorm import MaskedBatchNorm1d
 from seesaw.models.ple import LearnablePiecewiseEncodingLayer, QuantilePiecewiseEncodingLayer
 
 
@@ -251,6 +252,36 @@ class Attention2DPoolingReduction(nn.Module):
         return y
 
 
+class MaskedBatchNorm1dJaggedEmbedding(nn.Module):
+    def __init__(self, input_dim: int, output_dim: int) -> None:
+        super().__init__()
+        self.input_rearrange = Rearrange("b o f -> b f o")
+        self.batchnorm = MaskedBatchNorm1d(input_dim)
+
+        self.seq = nn.Sequential(
+            nn.Conv1d(in_channels=input_dim, out_channels=output_dim, kernel_size=1),
+            Rearrange("b e o -> b o e"),
+            nn.LayerNorm(output_dim),
+            nn.GELU(),
+        )
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        x_mask = rearrange(mask, "b o -> b o 1")
+
+        bn_mask = ~rearrange(mask, "b o -> b 1 o")
+        bn_mask = bn_mask.to(dtype=x.dtype)
+
+        x = x.masked_fill(x_mask, 0.0)
+
+        x = self.input_rearrange(x)
+        x = self.batchnorm(x, bn_mask)
+        x = self.seq(x)
+
+        x = x.masked_fill(x_mask, 0.0)
+
+        return x
+
+
 class JaggedPreprocessor(nn.Module):
     def __init__(
         self,
@@ -271,7 +302,6 @@ class JaggedPreprocessor(nn.Module):
         if conv1d_embedding and ple_dct is not None:
             raise ValueError("conv1d_embedding and ple_dct cannot be used together!")
 
-        self.conv1d_embedding = conv1d_embedding
         self.add_particle_types = add_particle_types
 
         if add_particle_types:
@@ -503,19 +533,7 @@ class JaggedPreprocessor(nn.Module):
                     )
                 )
             elif reduction == "conv1d":
-                projections.append(
-                    MaskedSequential(
-                        seq=nn.Sequential(
-                            Rearrange("b o f -> b f o"),
-                            nn.BatchNorm1d(total_features),
-                            nn.Conv1d(in_channels=total_features, out_channels=embedding_dim, kernel_size=1),
-                            nn.BatchNorm1d(embedding_dim),
-                            nn.ReLU(),
-                            Rearrange("b e o -> b o e"),
-                        ),
-                        first_mask_rearrange=Rearrange("b o -> b o 1"),
-                    )
-                )
+                projections.append(MaskedBatchNorm1dJaggedEmbedding(total_features, embedding_dim))
             elif reduction == "conv2d":
                 projections.append(
                     MaskedSequential(

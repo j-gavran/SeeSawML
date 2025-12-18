@@ -19,6 +19,8 @@ from seesaw.models.mlp import MLP
 from seesaw.models.nn_modules import BaseLightningModule
 from seesaw.models.res_net import ResNet
 from seesaw.models.transformers.event_transformer import EventTransformer
+from seesaw.models.transformers.pairwise_features import build_particle_attention_config
+from seesaw.models.transformers.particle_transformer import ParticleTransformer
 from seesaw.models.transformers.set_transformer import SetTransformer
 
 
@@ -94,6 +96,7 @@ def _build_events_network(
         embedding_config = {}
 
     ple_config = get_ple_config(embedding_config, dataset_conf)
+    embedding_config.pop("ple", None)
 
     embedding_config["ple_config"] = ple_config
 
@@ -324,6 +327,7 @@ def _build_jagged_network(
         embedding_config = {}
 
     ple_config = get_ple_config(embedding_config, dataset_conf)
+    embedding_config.pop("ple", None)
 
     embedding_config["ple_config"] = ple_config
 
@@ -415,6 +419,50 @@ def _build_jagged_network(
             first_attn_no_residual=architecture_config.get("first_attn_no_residual", False),
             sdp_backend=architecture_config.get("sdp_backend", None),
         )
+    elif model_name == "ParticleTransformer":
+        particle_attention_config = build_particle_attention_config(
+            selection,
+            architecture_config.get("particle_attention", None),
+            architecture_config.get("heads", 8),
+        )
+
+        if particle_attention_config is not None:
+            if dataset_conf.feature_scaling.numer_scaler_type is not None:
+                raise ValueError("Particle attention is not compatible with numerical feature scaling! Disable it.")
+
+            if architecture_config.get("embeddings", {}).get("ple", None) in [None, False]:
+                raise ValueError("Particle attention requires PLE jagged embeddings!")
+
+            if architecture_config.get("flat_embeddings", None) is not None:
+                if architecture_config.flat_embeddings.get("ple", None) in [None, False]:
+                    raise ValueError("Particle attention requires PLE flat embeddings!")
+
+        model = ParticleTransformer(
+            embedding_dim=architecture_config.get("embedding_dim", 64),
+            numer_idx=numer_columns_idx_dct,
+            categ_idx=categ_columns_idx_dct,
+            categories=categories_dct,
+            numer_padding_tokens=numer_padding_tokens,
+            categ_padding_tokens=categ_padding_tokens,
+            object_dimensions=object_dims,
+            heads=architecture_config.get("heads", 8),
+            dim_head=architecture_config.get("dim_head", 16),
+            particle_blocks=architecture_config.get("particle_blocks", 3),
+            class_blocks=architecture_config.get("class_blocks", 2),
+            ff_hidden_mult=architecture_config.get("ff_hidden_mult", 4),
+            dim_out=output_dim,
+            attn_dropout=architecture_config.get("attn_dropout", 0.0),
+            ff_dropout=architecture_config.get("ff_dropout", 0.0),
+            embedding_config_dct=embedding_config,
+            add_particle_types=architecture_config.get("add_particle_types", False),
+            flat_embeddings=flat_embeddings,
+            flat_embeddings_fuse=architecture_config.get("flat_embeddings_fuse", {}),
+            flat_model=events_model,
+            flat_model_fuse=architecture_config.get("flat_model_fuse", {}),
+            particle_attention=particle_attention_config,
+            first_attn_no_residual=architecture_config.get("first_attn_no_residual", False),
+            sdp_backend=architecture_config.get("sdp_backend", None),
+        )
     else:
         raise NotImplementedError("The model set in the params is not yet implemented!")
 
@@ -447,7 +495,6 @@ def get_ple_config(embedding_config: DictConfig, dataset_conf: DictConfig) -> di
             ple_config["dropout"] = embeddings_ple_config.get("dropout", 0.0)
             ple_config["layernorm"] = embeddings_ple_config.get("layernorm", False)
             ple_config["ple_file_hash_str"] = str(dataset_conf.files) + str(sorted(dataset_conf.features)) + str(n_bins)
-            embedding_config.pop("ple")
         else:
             ple_config = None
     else:

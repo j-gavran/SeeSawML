@@ -12,6 +12,29 @@ from seesaw.models.transformers.ff_blocks import GeGLUNet
 
 class Attend(nn.Module):
     def __init__(self, heads: int = 8, dropout_p: float = 0.1, sdp_backend: dict[str, bool] | None = None) -> None:
+        """Base attention module supporting both standard and scaled dot-product attention (SDPA).
+
+        Parameters
+        ----------
+        heads : int, optional
+            Number of attention heads, by default 8.
+        dropout_p : float, optional
+            Dropout probability for attention weights, by default 0.1.
+        sdp_backend : dict[str, bool] | None, optional
+            Dictionary specifying which SDP backends to enable. If None, standard attention is used, by default None.
+            Valid keys are:
+                - "enable_math"
+                - "enable_flash"
+                - "enable_mem_efficient"
+                - "enable_cudnn"
+
+        Note
+        ----
+        Forward method can optionally take mask and bias tensors to modify attention scores before softmax. Mask should
+        be a boolean tensor where True values are masked (set to -inf). Bias should be an additive tensor (float) added
+        to the attention scores.
+
+        """
         super().__init__()
         self.heads = heads
         self.dropout_p = dropout_p
@@ -61,14 +84,21 @@ class Attend(nn.Module):
         v: torch.Tensor,
         scale: float,
         mask: torch.Tensor | None = None,
+        bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
         dropout_p = self.dropout_p if self.training else 0.0
 
+        additive_mask: torch.Tensor | None = None
+
         if mask is not None:
-            mask = ~mask
+            additive_mask = torch.zeros_like(mask, dtype=q.dtype)
+            additive_mask = additive_mask.masked_fill(mask, float("-inf"))
+
+        if bias is not None:
+            additive_mask = bias if additive_mask is None else additive_mask + bias
 
         with self.sdp_context_manager():
-            out = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=dropout_p, scale=scale)
+            out = F.scaled_dot_product_attention(q, k, v, attn_mask=additive_mask, dropout_p=dropout_p, scale=scale)
 
         return out
 
@@ -79,11 +109,15 @@ class Attend(nn.Module):
         v: torch.Tensor,
         scale: float,
         mask: torch.Tensor | None = None,
+        bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
         dots = torch.einsum("b h i d, b h j d -> b h i j", q, k) * scale
 
         if mask is not None:
             dots = dots.masked_fill(mask, float("-inf"))
+
+        if bias is not None:
+            dots = dots + bias
 
         attn = torch.nan_to_num(self.softmax(dots))
 
@@ -101,13 +135,14 @@ class Attend(nn.Module):
         v: torch.Tensor,
         scale: float,
         mask: torch.Tensor | None = None,
+        bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
         q, k, v = map(lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.heads), (q, k, v))
 
         if self.use_sdp:
-            out = self.sdp_attention(q, k, v, scale, mask)
+            out = self.sdp_attention(q, k, v, scale, mask, bias)
         else:
-            out = self.attention(q, k, v, scale, mask)
+            out = self.attention(q, k, v, scale, mask, bias)
 
         return out
 
@@ -145,6 +180,7 @@ class Attention(nn.Module):
         x: torch.Tensor,
         context: torch.Tensor | None = None,
         mask: torch.Tensor | None = None,
+        bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if self.pre_norm:
             x = self.norm(x)
@@ -155,7 +191,7 @@ class Attention(nn.Module):
         q = self.to_q(x)
         k, v = self.to_kv(context).chunk(2, dim=-1)
 
-        attn = self.attend(q, k, v, self.scale, mask)
+        attn = self.attend(q, k, v, self.scale, mask, bias)
 
         out = rearrange(attn, "b h n d -> b n (h d)")
 
@@ -193,7 +229,13 @@ class CrossAttention(nn.Module):
 
         self.to_out = nn.Linear(inner_dim, dim if dim_out is None else dim_out, bias=False)
 
-    def forward(self, x: torch.Tensor, context: torch.Tensor, attn_mask: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        context: torch.Tensor,
+        mask: torch.Tensor | None = None,
+        bias: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         if self.normalize_q:
             x = self.q_norm(x)
 
@@ -202,7 +244,7 @@ class CrossAttention(nn.Module):
         q = self.to_q(x)
         k, v = self.to_kv(context).chunk(2, dim=-1)
 
-        attn = self.attend(q, k, v, self.scale, attn_mask)
+        attn = self.attend(q, k, v, self.scale, mask, bias)
 
         out = rearrange(attn, "b h n d -> b n (h d)")
 
@@ -218,6 +260,7 @@ class ClassAttention(Attention):
         x: torch.Tensor,
         context: torch.Tensor | None = None,
         mask: torch.Tensor | None = None,
+        bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if self.pre_norm:
             x = self.norm(x)
@@ -230,7 +273,7 @@ class ClassAttention(Attention):
         q = self.to_q(x)
         k, v = self.to_kv(context).chunk(2, dim=-1)
 
-        attn = self.attend(q, k, v, self.scale, mask)
+        attn = self.attend(q, k, v, self.scale, mask, bias)
 
         out = rearrange(attn, "b h n d -> b n (h d)")
 
@@ -278,12 +321,16 @@ class AttentionBlock(nn.Module):
         self.ff = GeGLUNet(dim, mult=mlp_dim // dim, dropout=ff_dropout, output_dropout=False)
 
     def forward(
-        self, x: torch.Tensor, context: torch.Tensor | None = None, mask: torch.Tensor | None = None
+        self,
+        x: torch.Tensor,
+        context: torch.Tensor | None = None,
+        mask: torch.Tensor | None = None,
+        bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if self.attention_residual:
-            x = x + self.attn(x, context, mask)
+            x = x + self.attn(x, context, mask, bias)
         else:
-            x = self.attn(x, context, mask)
+            x = self.attn(x, context, mask, bias)
 
         x = x + self.ff(x)
         return x
@@ -336,10 +383,14 @@ class AttentionEncoder(nn.Module):
         self.layers = nn.ModuleList(attn_blocks)
 
     def forward(
-        self, x: torch.Tensor, context: torch.Tensor | None = None, mask: torch.Tensor | None = None
+        self,
+        x: torch.Tensor,
+        context: torch.Tensor | None = None,
+        mask: torch.Tensor | None = None,
+        bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
         for layer in self.layers:
-            x = layer(x, context, mask)
+            x = layer(x, context, mask, bias)
         return x
 
 
