@@ -1,9 +1,9 @@
 HDF5 conversion configuration options are defined in the `convert_config.yaml` file located in the `signal/` and `fakes/` directories under the `convert_config` field.
 
-!!! Note
+!!! Note "Input File Format"
     HDF5 converter is designed to work with TNAnalysis preselection ROOT files. Ensure that the input files are in the correct format before using the converter. If your files come from a different source, you may need to preprocess them to match the expected structure.
 
-!!! Tip
+!!! Tip "Creating Custom HDF5 Datasets"
     Custom HDF5 dataset can be easily created using the [`F9Columnar`](https://gitlab.cern.ch/ijs-f9-ljubljana/F9Columnar) library. This allows anyone to create custom HDF5 datasets from any ROOT files by writing some Python code. An example for ATLAS Open Data can be found [here](https://gitlab.cern.ch/atlas-dch-seesaw-analyses/SeeSawML/-/blob/main/seesaw/fakes/dataset/hdf5_opendata_converter.py?ref_type=heads). For more details, refer to the F9Columnar README.
 
 
@@ -29,7 +29,7 @@ Dataset configurations are imported from the `hdf5_config/` directory into the `
 - `scale: dict[str, float]`: Dictionary specifying scaling factors features. Useful for unti conversion (e.g., MeV to GeV).
 - `custom_chunk_shapes: dict[str, int]`: Custom chunk shapes for different labels to optimize HDF5 storage.
 
-!!! Example
+!!! Example "Example Signal Dataset Configuration"
     Two lepton signal vs background dataset configuration example:
     ```yaml
     labels:
@@ -119,12 +119,11 @@ Dataset configurations are imported from the `hdf5_config/` directory into the `
 
     HDF5 file structure created from the above configuration:
 
-    ![HDF5 Structure](../../images/hdf5_struct.png)
+    ![HDF5 Structure](../images/hdf5_struct.png)
 
 
-!!! Tip
-    You can inspect created HDF5 files online using [myHDF5viewer](https://myhdf5.hdfgroup.org/help).
-
+!!! Tip "How to Inspect HDF5 Files"
+    You can inspect created HDF5 files online using [myHDF5viewer](https://myhdf5.hdfgroup.org/help). There is also a vscode extension [H5Web](https://marketplace.visualstudio.com/items?itemName=h5web.vscode-h5web) that allows you to view HDF5 files directly in vscode.
 
 ### Fakes Dataset Configuration
 
@@ -148,7 +147,7 @@ Dataset configurations are imported from the `hdf5_config/` directory into the `
 - `multiprocessing_context: str`: Multiprocessing context to use. Options are `fork`, `spawn`, or `forkserver`. Default is `fork`. See [Python multiprocessing docs](https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods) for more details.
 - `pile_assignment: str`: Method to assign events to piles. Options are `random` (random assignment) or `deque` (round-robin assignment).
 
-!!! Info
+!!! Info "What is a Pile?"
     Pile is a small HDF5 file that contains a subset of the entire dataset. Multiple piles are created to allow for efficient data loading and parallel processing during training. Each pile contains a shuffled portion of events from the original ROOT files.
 
 ### Signal Specific Settings
@@ -156,7 +155,7 @@ Dataset configurations are imported from the `hdf5_config/` directory into the `
 - `same_sign_leptons: bool`: Filters pairs of same sign leptons when set to `true`. Useful for analyses focusing on same-sign dilepton events.
 - `disable_other_label: bool`: If set to `true`, will ignore input files that do not contain the specified `labels`. If `false`, will include all input files and assign the `other` label to events not matching the specified `labels`. By default, it is set to `false`.
 
-!!! Example
+!!! Example "Example Converter Settings"
     Same sign two lepton signal vs background dataset converter settings example:
     ```yaml
     convert_config:

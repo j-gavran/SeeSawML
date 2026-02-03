@@ -4,7 +4,7 @@ The installation does not require any containers or any ATLAS specific setup. It
 
 The package is aimed to be used as a submodule in other projects.
 
-!!! note
+!!! note "Analysis Using SeeSawML"
     If the package has already been added as a submodule, you can skip this section and refer to the `README.md` file for usage instructions of the specific analysis. This applies for e.g. [`SeeSawAnalysis`](https://gitlab.cern.ch/atlas-dch-seesaw-analyses/SeeSawAnalysis) and [`ttHccAnalysis`](https://gitlab.cern.ch/atlas-physics/higp/bcquarks/ttHcc/histogramming/ttHccAnalysis).
 
 To include it as a submodule, run the following command in your project directory:
@@ -39,18 +39,18 @@ It should set the following environment variables:
 - `ANALYSIS_ML_LOGS_DIR`: Path to the directory where log files will be stored (`hydra`, `mlflow` and `stdout` logs).
 - `ANALYSIS_ML_NTUPLES_DIR`: Path to the directory where ntuples (starting ROOT files) will be stored. This can also be set in the YAML configuration files directly.
 
-!!! Note
+!!! Note "Setting Up Virtual Environment"
     It is recommended to set up `ANALYSIS_ML_VENV_PATH`. For example: `export ANALYSIS_ML_VENV_PATH="/data0/jang/analysis/seesawml_venv"` or
     `export ANALYSIS_ML_VENV_PATH="/afs/cern.ch/user/j/jgavrano/analysis/condor_venv"`
 
-!!! Tip
+!!! Tip "Using TNAnalysis Virtual Environment"
     If using TNAnalysis virtual environment, you should setup the TNAnalysis environment first. Additionally you can add the following line to your setup file: `UV_CACHE_DIR`. For more information, see the [uv docs](https://docs.astral.sh/uv/concepts/cache/#cache-directory).
 
 ## Installing Dependencies
 
 Once the environment variables are set, the virtual environment is created automatically and all the required packages are installed the first time you source the setup script. The script will create a Python virtual environment at the path specified by `ANALYSIS_ML_VENV_PATH` and install all required packages listed in the `pyproject.toml` file. If the virtual environment already exists, it will simply be activated.
 
-!!! Info
+!!! Info "Using the Setup Script"
     The setup script will create and/or use the virtual environment specified by the `ANALYSIS_ML_VENV_PATH` environment variable.
     It will do this by running the following command:
     ```shell
@@ -121,8 +121,8 @@ Running on lxplus...
 For HTCondor submission check `condor_ml_sub --help`
 ```
 
-!!! Note
+!!! Note "Using on lxplus"
     If running on `lxplus` only the SeeSawML will be installed in the virtual environment located on `afs`. The actual
-    virtual environment is already created and zipped on `eos` and it will be used as is when running condor jobs. This is to avoid long installation times on `eos` and low `afs` quotas.
+    virtual environment is already created and zipped on `eos` and it will be used as is when running condor jobs. This is to avoid long installation times on `eos` and low `afs` quotas. For more details, see the [lxplus instructions](../start/lxplus.md).
 
 And that is it! You are now ready to use SeeSawML in your analysis.

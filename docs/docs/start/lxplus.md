@@ -13,10 +13,10 @@ This will open a terminal session directly into the execution environment of the
 !!! Danger
     `lxplus` support is not tested as frequently as local runs. There might be issues with package dependencies or environment setup.
 
-!!! Info
+!!! Info "Virtual Environment on lxplus"
     Virtual environment for lxplus is already created (by using [`conda-pack`](https://conda.github.io/conda-pack/)) and it is copied to the Condor working directory for each job and unpacked there. You can find the current virtual environment [here](https://cernbox.cern.ch/files/spaces/eos/user/j/jgavrano/batch_venv.tar.gz). Also note that the packed virtual environment comes with a specific CUDA version so make sure that your GPU jobs are compatible with that.
 
-!!! Example
+!!! Example "A Typical Workflow on lxplus"
     An example of a typical workflow on `lxplus` is described below.
 
     Start by setting (replace with your own paths):
@@ -57,7 +57,7 @@ This will open a terminal session directly into the execution environment of the
 
     The arguments passed to the above commands are not optimal and should be adjusted based on the dataset size, model complexity, and available resources.
 
-!!! Note
+!!! Note "Requesting Multiple GPUs"
     You can request multiple GPUs per job by setting `--gpu <num_gpus>` (up to 5). However, make sure that your job actually needs that many GPUs, otherwise the job might get stuck in the queue for a long time waiting for resources to become available.
 
 ### Setting up Comet logger

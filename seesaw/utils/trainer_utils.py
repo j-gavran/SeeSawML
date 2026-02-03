@@ -106,6 +106,12 @@ def get_logger(
         if mlflow_tracking_uri is None:
             mlflow_tracking_uri = f"sqlite:///{save_dir}/mlflow.sqlite"
 
+        root_logger = logging.getLogger()
+        saved_handlers = root_logger.handlers.copy()
+        saved_level = root_logger.level
+
+        logging.disable(logging.INFO)
+
         mlf_logger = MLFlowLogger(
             experiment_name=experiment_name,
             run_name=run_name,
@@ -113,6 +119,11 @@ def get_logger(
             artifact_location=save_dir,
             log_model=False,
         )
+
+        logging.disable(logging.NOTSET)
+
+        root_logger.handlers = saved_handlers
+        root_logger.setLevel(saved_level)
 
         return mlf_logger
 
@@ -140,6 +151,12 @@ def get_trainer(
         logging.info(f"Setting val_check_interval to {val_check_interval}.")
         check_val_every_n_epoch = None
 
+    root_logger = logging.getLogger()
+    saved_handlers = root_logger.handlers.copy()
+    saved_level = root_logger.level
+
+    logging.getLogger("lightning.pytorch.accelerators.cuda").setLevel(logging.WARNING)
+
     trainer = L.Trainer(
         max_epochs=training_conf.max_epochs,
         accelerator=experiment_conf.accelerator,
@@ -153,6 +170,9 @@ def get_trainer(
         precision=precision,
         gradient_clip_val=training_conf.get("gradient_clip_val", None),
     )
+
+    root_logger.handlers = saved_handlers
+    root_logger.setLevel(saved_level)
 
     return trainer
 

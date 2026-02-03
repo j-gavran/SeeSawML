@@ -48,7 +48,9 @@ CUSTOM_LOGGERS = [
 
 
 class LoggerConfig:
-    def __init__(self, handlers, log_format, date_format=None, level="info"):
+    def __init__(
+        self, handlers: list[logging.Handler], log_format: str, date_format: str | None = None, level: str = "info"
+    ) -> None:
         self.handlers = handlers
         self.log_format = log_format
         self.date_format = date_format
@@ -258,7 +260,7 @@ class TotalTimeColumn(ProgressColumn):
 
 
 class CustomRichProgressBar(RichProgressBar):
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         theme = RichProgressBarTheme(
             description="white",
             progress_bar="white",
@@ -269,18 +271,16 @@ class CustomRichProgressBar(RichProgressBar):
             processing_speed="underline",
             metrics="white",
         )
-        super().__init__(*args, theme=theme, **kwargs)
+        super().__init__(*args, theme=theme, **kwargs)  # type: ignore[misc, arg-type]
         self.current_epoch = 0
         self.max_epochs = 0
         self.epoch_durations: Deque[float] = deque(maxlen=10)
         self.epoch_start_time = 0.0
 
-    def on_train_epoch_start(self, *args, **kwargs) -> None:
-        super().on_train_epoch_start(*args, **kwargs)
+    def on_train_epoch_start(self, *args: Any, **kwargs: Any) -> None:
         self.epoch_start_time = time.time()
 
-    def on_train_epoch_end(self, *args, **kwargs) -> None:
-        super().on_train_epoch_end(*args, **kwargs)
+    def on_train_epoch_end(self, *args: Any, **kwargs: Any) -> None:
         duration = time.time() - self.epoch_start_time
         self.epoch_durations.append(duration)
 
@@ -292,8 +292,8 @@ class CustomRichProgressBar(RichProgressBar):
         remaining_epochs = self.max_epochs - (current_epoch + 1)
         return max(0.0, remaining_epochs * avg_time)
 
-    def configure_columns(self, trainer: Trainer) -> list:
-        self.max_epochs = trainer.max_epochs
+    def configure_columns(self, trainer: Trainer) -> list:  # type: ignore[override]
+        self.max_epochs = trainer.max_epochs  # type: ignore[assignment]
         return [
             TextColumn("[progress.description]{task.description}"),
             SpinnerColumn(style="green", spinner_name="aesthetic"),
@@ -311,15 +311,15 @@ class CustomRichProgressBar(RichProgressBar):
             TextColumn("|"),
         ]
 
-    def get_metrics(self, *args, **kwargs) -> dict:
+    def get_metrics(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         current_epoch = self.trainer.current_epoch
 
         if self.current_epoch != current_epoch:
             self.current_epoch = current_epoch
             remaining_delta = self.estimate_remaining_time(self.current_epoch)
 
-            time_column = self.progress.columns[9]
-            time_column.set_remaining_time(remaining_delta, self.current_epoch)
+            time_column = self.progress.columns[9]  # type: ignore[union-attr]
+            time_column.set_remaining_time(remaining_delta, self.current_epoch)  # type: ignore[union-attr]
 
         metrics = super().get_metrics(*args, **kwargs)
         metrics.pop("v_num", None)

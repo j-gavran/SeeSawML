@@ -14,7 +14,7 @@ HDF5 dataset configuration is imported from `hdf5_config/` folder into the `conv
 
 Model, training dataset, plotting and tuning configuration are imported from `model_config/`, `dataset_config/`, `plotting_config/` and `tuning_config/` folders into the `training_config.yaml` files.
 
-!!! Info
+!!! Info "Importing Configurations"
     In the `convert_config.yaml` file located in `signal/` or `fakes/`, the HDF5 dataset configuration is imported as follows:
 
     ```yaml
@@ -39,7 +39,7 @@ Model, training dataset, plotting and tuning configuration are imported from `mo
       - override hydra/job_logging: disabled
     ```
 
-!!! Note
+!!! Note "Base Configuration"
     Each main configuration file (`convert_config.yaml` and `training_config.yaml`) should start with:
     ```yaml
     min_logging_level: info
@@ -52,7 +52,7 @@ Model, training dataset, plotting and tuning configuration are imported from `mo
     ```
     The `min_logging_level` sets the minimum logging level for the package, while the `hydra` section configures Hydra to output logs and results in the current working directory.
 
-!!! Example
+!!! Example "Example Directory Structure"
     Example directory structure from the [SeeSawAnalysis](https://gitlab.cern.ch/atlas-dch-seesaw-analyses/SeeSawAnalysis/-/tree/main/ml_config?ref_type=heads) of the configuration files:
     ```
     |   ├── fakes
@@ -111,5 +111,5 @@ Model, training dataset, plotting and tuning configuration are imported from `mo
     ```
     As depicted above, each main folder contains its respective configuration files and subdirectories for different configuration aspects.
 
-!!! Warning
+!!! Warning "Hyperparameter Tuning Support"
     Hyperparameter tuning with [Optuna](https://optuna.org/) is currently only supported for fakes analyses and not for signal vs background classification. See issue [here](https://gitlab.cern.ch/atlas-dch-seesaw-analyses/SeeSawML/-/work_items/1).

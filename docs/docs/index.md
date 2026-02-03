@@ -28,3 +28,5 @@ All contributions are welcome! If you find a bug or have a feature request, plea
 ## Releases
 
 Tags are labeled as `vX.Y.Z`. Release will be made only for major (`X`) and minor version (`Y`) updates. Patch updates will be merged to the `main` branch without a formal release. Before starting a new study, make sure that you are using the latest release version for the most up-to-date features and fixes. Documentation follows `main` branch and may include features not yet available in the latest release. Features under development (not yet in a release) are flaged as such in the documentation.
+
+**Contact**: [jan.gavranovic@cern.ch](mailto:jan.gavranovic@cern.ch)

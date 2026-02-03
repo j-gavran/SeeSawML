@@ -16,12 +16,13 @@ SeeSawML provides several command-line tools to facilitate different tasks. They
 - `pile_stats`: Computes and saves statistics about the HDF5 dataset.
 - `plot_piles`: Plot all distributions of features in the HDF5 dataset.
 
-!!! Tip
+!!! Tip "Verifying Dataset Quality"
     It is good practice to run `pile_stats` and `plot_piles` after data conversion to verify the dataset quality.
 
 ### Signal vs Background Classification
 
 - `plot_signal`: Plot signal vs background distributions. Can also plot model output distributions.
+- `plot_pairwise`: Plot pairwise feature distributionss.
 - `convert_signal`: Convert ROOT files to HDF5 format for signal vs background dataset.
 - `scale_signal`: Feature scaling.
 - `calculate_class_weights`: Calculate class weights for imbalanced datasets.
@@ -30,7 +31,7 @@ SeeSawML provides several command-line tools to facilitate different tasks. They
 - `calibrate_signal`: Perform post-hoc calibration of the trained model.
 - `onnx_signal`: Export trained model and metadata to ONNX format.
 
-!!! Example
+!!! Example "A Typical Workflow"
     A common workflow for training a signal vs background classification model would involve running the following commands in sequence:
     ```shell
     convert_signal
@@ -41,10 +42,10 @@ SeeSawML provides several command-line tools to facilitate different tasks. They
     onnx_signal
     ```
 
-!!! Note
+!!! Note "Using Commands"
     Each command reads its configuration from a YAML file using [Hydra](https://hydra.cc/docs/intro/) so you can customize the behavior of each step by modifying the corresponding configuration file, usually located in the directory specified by the `ANALYSIS_ML_CONFIG_DIR` environment variable.
 
-!!! Tip
+!!! Tip "Overriding Configuration from Command Line"
     You can also change the configuration directly from the command line without modifying the YAML files. For example, to change the number of training epochs you can run: `train_signal model_config.training_config.max_epochs=50`.
 
 ### Fakes Estimation
