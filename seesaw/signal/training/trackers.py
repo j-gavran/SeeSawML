@@ -17,6 +17,11 @@ from torchmetrics.classification import (
 )
 
 from seesaw.models.tracker import Tracker
+from seesaw.signal.metrics.significance import (
+    binned_significance,
+    compute_signal_score,
+    scan_significance,
+)
 from seesaw.signal.training.group_plotting import (
     plot_group_one_vs_rest_discriminant,
     plot_group_one_vs_rest_roc,
@@ -37,6 +42,7 @@ from seesaw.signal.training.tracker_plotting import (
     plot_multiclass_one_vs_rest_roc,
     plot_multiclass_one_vs_rest_score,
     plot_multiclass_tsne_pca,
+    plot_significance_summary,
 )
 
 
@@ -252,7 +258,16 @@ class SigBkgClassifierTracker(Tracker):
         return True
 
 
-class SigBkgMulticlassClassifierTracker(Tracker):
+class SigBkgMulticlassTrackerBase(Tracker):
+    """Base class for multiclass signal/background trackers.
+
+    Provides shared functionality for multiclass classification tracking
+    including significance logging, class label management, and common
+    accumulator setup.
+
+    Subclasses must implement ``compute`` and ``plot`` methods.
+    """
+
     def __init__(
         self,
         experiment_conf: DictConfig,
@@ -260,12 +275,14 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         model_conf: DictConfig,
         plotting_conf: DictConfig,
         tracker_path: str,
+        significance_conf: DictConfig | None = None,
     ) -> None:
         super().__init__(experiment_conf, tracker_path)
 
         self.dataset_conf = dataset_conf
         self.model_conf = model_conf
         self.plotting_conf = plotting_conf
+        self.significance_conf = significance_conf
 
         self._max_events = 10**7
 
@@ -276,6 +293,7 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         self.accumulated_true: list[torch.Tensor] = []
         self.accumulated_pred: list[torch.Tensor] = []
         self.accumulated_logits: list[torch.Tensor] = []
+        self.accumulated_mc_weights: list[torch.Tensor] = []
 
         self.tsne_pca_X: list[torch.Tensor] = []
         self.tsne_pca_y_true: list[torch.Tensor] = []
@@ -285,22 +303,11 @@ class SigBkgMulticlassClassifierTracker(Tracker):
 
         self.current_events = 0
 
-    def _set_class_labels(self, reports: dict[str, Any]) -> None:
-        self._class_labels = reports.get("class_labels", None)
-
-        if self._class_labels is None:
-            raise RuntimeError("Class labels are not provided in the reports.")
-
-    @property
-    def class_labels(self) -> dict[str, int]:
-        if self._class_labels is None:
-            raise RuntimeError("Class labels have not been set.")
-        return self._class_labels
-
     def reset(self) -> None:
         self.accumulated_true.clear()
         self.accumulated_pred.clear()
         self.accumulated_logits.clear()
+        self.accumulated_mc_weights.clear()
 
         self.tsne_pca_X.clear()
         self.tsne_pca_y_true.clear()
@@ -311,17 +318,107 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         self.current_events = 0
 
     @property
+    def class_labels(self) -> dict[str, int]:
+        if self._class_labels is None:
+            raise RuntimeError("Class labels have not been set.")
+        return self._class_labels
+
+    def _set_class_labels(self, reports: dict[str, Any]) -> None:
+        self._class_labels = reports.get("class_labels", None)
+        if self._class_labels is None:
+            raise RuntimeError("Class labels are not provided in the reports.")
+
+    @property
     def plotting_dirs(self) -> dict[str, str]:
         return {
             "roc": f"{self.base_dir}/roc/",
             "confmat": f"{self.base_dir}/confmat/",
             "scores": f"{self.base_dir}/score/",
             "custom_scores": f"{self.base_dir}/custom_score/",
+            "significance": f"{self.base_dir}/significance/",
         }
 
     def calculate_cm(self, y_true: torch.Tensor, y_pred: torch.Tensor) -> np.ndarray:
         cm = MulticlassConfusionMatrix(self.num_classes)
         return self.to_int64_numpy(cm(torch.argmax(y_pred, dim=1), y_true))
+
+    def _log_significance(
+        self,
+        predictions: np.ndarray,
+        labels: np.ndarray,
+        mc_weights: np.ndarray,
+        stage: str,
+        save_postfix: str,
+    ) -> None:
+        """Compute and log significance metrics to MLflow with plots.
+
+        Parameters
+        ----------
+        predictions : np.ndarray
+            Softmax predictions, shape ``(n_events, n_classes)``.
+        labels : np.ndarray
+            True class labels, shape ``(n_events,)``.
+        mc_weights : np.ndarray
+            MC weights per event, shape ``(n_events,)``.
+        stage : str
+            Training stage name (e.g., "train", "val", "test").
+        save_postfix : str
+            Suffix for saved plot filenames.
+
+        Notes
+        -----
+        For each significance definition in ``significance_conf``, this method:
+
+        1. Maps signal/background class names to indices
+        2. Computes signal scores via ``compute_signal_score``
+        3. Runs threshold scan and binned significance calculations
+        4. Logs ``{stage}_significance_max_{name}`` and
+           ``{stage}_significance_integrated_{name}`` to MLflow
+        5. Generates a summary plot saved to the significance directory
+        """
+        if self.significance_conf is None:
+            return
+
+        for name, sig_def in self.significance_conf.items():
+            sig_classes = list(sig_def.signal)
+            bkg_classes = list(sig_def.background)
+
+            sig_indices = [self.class_labels[c] for c in sig_classes if c in self.class_labels]
+            bkg_indices = [self.class_labels[c] for c in bkg_classes if c in self.class_labels]
+
+            if not sig_indices or not bkg_indices:
+                logging.warning("Skipping significance '%s': missing classes in labels.", name)
+                continue
+
+            scores = compute_signal_score(predictions, sig_indices, bkg_indices)
+            is_signal = np.isin(labels, sig_indices)
+
+            scan_result = scan_significance(scores, mc_weights, is_signal)
+            self.module.log(f"{stage}_significance_max_{name}", scan_result.max_significance)
+
+            binned_result = binned_significance(scores, mc_weights, is_signal, n_bins=10)
+            self.module.log(f"{stage}_significance_integrated_{name}", binned_result.integrated_significance)
+
+            plot_significance_summary(
+                scan_result.thresholds,
+                scan_result.significances,
+                scan_result.max_significance,
+                scan_result.optimal_threshold,
+                binned_result.integrated_significance,
+                binned_result.bin_centers,
+                binned_result.bin_significances,
+                name,
+                save_path=self.plotting_dirs["significance"],
+                save_postfix=save_postfix,
+            )
+
+
+class SigBkgMulticlassClassifierTracker(SigBkgMulticlassTrackerBase):
+    """Multiclass classifier tracker for standard batches.
+
+    Handles ``WeightedBatchType`` inputs for multiclass signal/background
+    classification.
+    """
 
     def compute(self, batch: WeightedBatchType, stage: str) -> bool:
         self.stage, self.current_epoch = stage, self.module.current_epoch
@@ -335,8 +432,9 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         if self.current_events >= self._max_events:
             return False
 
-        X, y_true, _, _, _ = batch
+        X, y_true, mc_weights, _, _ = batch
         y_true = y_true.cpu()
+        mc_weights = mc_weights.cpu()
 
         y_pred_logits = self.module(X)
         y_pred = torch.softmax(y_pred_logits, dim=1).cpu()
@@ -349,6 +447,7 @@ class SigBkgMulticlassClassifierTracker(Tracker):
         self.accumulated_logits.append(y_pred_logits.cpu())
         self.accumulated_true.append(y_true)
         self.accumulated_pred.append(y_pred)
+        self.accumulated_mc_weights.append(mc_weights)
 
         self.f1.update(y_pred, y_true)
 
@@ -517,6 +616,10 @@ class SigBkgMulticlassClassifierTracker(Tracker):
                     save_path=self.plotting_dirs["scores"],
                     save_postfix=save_postfix,
                 )
+
+        # Log significance to MLflow with plots
+        np_accumulated_mc_weights = self.to_float32_numpy(torch.cat(self.accumulated_mc_weights))
+        self._log_significance(np_accumulated_pred, np_accumulated_true, np_accumulated_mc_weights, stage, save_postfix)
 
         self.log_artifacts()
         self.reset()
@@ -747,75 +850,12 @@ class JaggedSigBkgClassifierTracker(Tracker):
         return True
 
 
-class JaggedSigBkgMulticlassClassifierTracker(Tracker):
-    def __init__(
-        self,
-        experiment_conf: DictConfig,
-        dataset_conf: DictConfig,
-        model_conf: DictConfig,
-        plotting_conf: DictConfig,
-        tracker_path: str,
-    ) -> None:
-        super().__init__(experiment_conf, tracker_path)
+class JaggedSigBkgMulticlassClassifierTracker(SigBkgMulticlassTrackerBase):
+    """Multiclass classifier tracker for jagged batches.
 
-        self.dataset_conf = dataset_conf
-        self.model_conf = model_conf
-        self.plotting_conf = plotting_conf
-
-        self._max_events = 10**7
-
-        self.num_classes = len(self.dataset_conf.classes)
-
-        self._class_labels: dict[str, int] | None = None
-
-        self.accumulated_true: list[torch.Tensor] = []
-        self.accumulated_pred: list[torch.Tensor] = []
-        self.accumulated_logits: list[torch.Tensor] = []
-
-        self.tsne_pca_X: list[torch.Tensor] = []
-        self.tsne_pca_y_true: list[torch.Tensor] = []
-        self.tsne_pca_y_pred: list[torch.Tensor] = []
-
-        self.f1 = MulticlassF1Score(num_classes=self.num_classes, average="none")
-
-        self.current_events = 0
-
-    def _set_class_labels(self, reports: dict[str, Any]) -> None:
-        self._class_labels = reports.get("class_labels", None)
-        if self._class_labels is None:
-            raise RuntimeError("Class labels are not provided in the reports.")
-
-    @property
-    def class_labels(self) -> dict[str, int]:
-        if self._class_labels is None:
-            raise RuntimeError("Class labels have not been set.")
-        return self._class_labels
-
-    def reset(self) -> None:
-        self.accumulated_true.clear()
-        self.accumulated_pred.clear()
-        self.accumulated_logits.clear()
-
-        self.tsne_pca_X.clear()
-        self.tsne_pca_y_true.clear()
-        self.tsne_pca_y_pred.clear()
-
-        self.f1.reset()
-
-        self.current_events = 0
-
-    @property
-    def plotting_dirs(self) -> dict[str, str]:
-        return {
-            "roc": f"{self.base_dir}/roc/",
-            "confmat": f"{self.base_dir}/confmat/",
-            "scores": f"{self.base_dir}/score/",
-            "custom_scores": f"{self.base_dir}/custom_score/",
-        }
-
-    def calculate_cm(self, y_true: torch.Tensor, y_pred: torch.Tensor) -> np.ndarray:
-        cm = MulticlassConfusionMatrix(self.num_classes)
-        return self.to_int64_numpy(cm(torch.argmax(y_pred, dim=1), y_true))
+    Handles ``FullWeightedBatchType`` inputs with variable-length sequences
+    for multiclass signal/background classification.
+    """
 
     def compute(self, batch: FullWeightedBatchType, stage: str) -> bool:
         self.stage, self.current_epoch = stage, self.module.current_epoch
@@ -835,11 +875,12 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
             if k != "events":
                 Xs.append(batch[0][k][0])
 
-        X, y_true = batch[0]["events"][0], batch[0]["events"][1]
+        X, y_true, mc_weights = batch[0]["events"][0], batch[0]["events"][1], batch[0]["events"][2]
         if y_true is None:
             return False
 
         y_true = y_true.cpu()
+        mc_weights = mc_weights.cpu() if mc_weights is not None else torch.ones_like(y_true, dtype=torch.float32)
 
         y_pred_logits = self.module(X, Xs)
         y_pred = torch.softmax(y_pred_logits, dim=1).cpu()
@@ -852,6 +893,7 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
         self.accumulated_logits.append(y_pred_logits.cpu())
         self.accumulated_true.append(y_true)
         self.accumulated_pred.append(y_pred)
+        self.accumulated_mc_weights.append(mc_weights)
 
         self.f1.update(y_pred, y_true)
 
@@ -989,6 +1031,10 @@ class JaggedSigBkgMulticlassClassifierTracker(Tracker):
                     save_path=self.plotting_dirs["custom_scores"],
                     save_postfix=save_postfix,
                 )
+
+        # Log significance to MLflow with plots
+        np_accumulated_mc_weights = self.to_float32_numpy(torch.cat(self.accumulated_mc_weights))
+        self._log_significance(np_accumulated_pred, np_accumulated_true, np_accumulated_mc_weights, stage, save_postfix)
 
         self.log_artifacts()
         self.reset()

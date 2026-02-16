@@ -180,42 +180,9 @@ This shows what percentage of particles are being masked out due to failing the 
 ### Use `remove_invalid: false` when:
 
 - You want to experiment with different type selections
-- You need to compare Loose vs Tight performance
-- You want to keep the option to use all particles later
-
-!!! Tip "Recommended Approach"
-    Start with `remove_invalid: false` during development. Once you've finalized your type selection, you can regenerate HDF5 files with `remove_invalid: true` for production to save disk space.
 
 ## Implementation Details
-
-### Key Files
-
-| File | Purpose |
-|------|---------|
-| `seesaw/signal/dataset/hdf5_converter.py` | `TypeFieldProcessor` handles `remove_invalid` during HDF5 conversion |
-| `seesaw/models/jagged_preprocessor.py` | `JaggedPreprocessor` derives masks from type tensors during training |
-| `seesaw/models/constants.py` | `PARTICLE_PREFIX_MAP` maps object names to field prefixes |
-| `seesaw/signal/models/sig_bkg_classifiers.py` | Extracts `type_tensors` from batch and passes to model |
 
 ### Auto-Added Type Fields
 
 When `valid_type_values` is configured, the type fields (`jet_type`, `el_type`, `mu_type`) are automatically added to the features list if not already present. This ensures the dataloader loads them from HDF5.
-
-```python
-# In seesaw/models/constants.py
-PARTICLE_PREFIX_MAP = {
-    "jets": "jet",
-    "electrons": "el",
-    "muons": "mu",
-}
-
-def add_type_fields_to_features(features, valid_type_values):
-    """Auto-add type fields to features list if valid_type_values is configured."""
-    for obj_name in valid_type_values:
-        prefix = PARTICLE_PREFIX_MAP.get(obj_name)
-        if prefix:
-            type_field = f"{prefix}_type"
-            if type_field not in features:
-                features.append(type_field)
-    return features
-```

@@ -42,6 +42,7 @@ nav:
       - Plotting: api/signal/plotting.md
       - Models: api/signal/models.md
       - Training: api/signal/training.md
+      - Significance Metrics: api/signal/significance_calculation.md
     - Fake Estimation:
       - Preparation: api/fakes/preparation.md
       - Models: api/fakes/models.md

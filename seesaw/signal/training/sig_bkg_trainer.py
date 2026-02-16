@@ -273,6 +273,7 @@ def sig_bkg_trainer(config: DictConfig) -> None:
         is_multiclass = False
 
     tracker: Tracker | None
+    significance_conf = config.get("significance_config", None)
 
     if is_multiclass:
         if events_only:
@@ -282,6 +283,7 @@ def sig_bkg_trainer(config: DictConfig) -> None:
                 model_config,
                 config.plotting_config,
                 tracker_path=os.path.join(experiment_config.tracker_path, model_name),
+                significance_conf=significance_conf,
             )
         else:
             tracker = JaggedSigBkgMulticlassClassifierTracker(
@@ -290,6 +292,7 @@ def sig_bkg_trainer(config: DictConfig) -> None:
                 model_config,
                 config.plotting_config,
                 tracker_path=os.path.join(experiment_config.tracker_path, model_name),
+                significance_conf=significance_conf,
             )
     else:
         if events_only:

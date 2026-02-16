@@ -598,3 +598,51 @@ def plot_multiclass_discriminant_one_vs_rest(
     with PdfPages(f"{save_path}/one_vs_rest_discriminant_{save_postfix}.pdf") as pdf:
         for fig in figs:
             pdf.savefig(fig, bbox_inches="tight")
+
+
+@handle_plot_exception
+def plot_significance_summary(
+    scan_thresholds: np.ndarray,
+    scan_significances: np.ndarray,
+    max_significance: float,
+    optimal_threshold: float,
+    integrated_significance: float,
+    bin_centers: np.ndarray,
+    bin_significances: np.ndarray,
+    name: str,
+    save_path: str,
+    save_postfix: str,
+) -> None:
+    """Plot significance scan and binned significance summary."""
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    # Left: Threshold scan
+    ax1 = axes[0]
+    ax1.plot(scan_thresholds, scan_significances, color="C0", lw=2.5)
+    ax1.axvline(optimal_threshold, color="C1", ls="--", lw=2.0, label=f"Optimal cut = {optimal_threshold:.3f}")
+    ax1.axhline(max_significance, color="C2", ls=":", lw=1.5, label=f"Max Z = {max_significance:.3f}")
+    ax1.set_xlabel("Signal Score Threshold", fontsize=14)
+    ax1.set_ylabel("Significance (Asimov)", fontsize=14)
+    ax1.set_ylim(bottom=0.0)
+    ax1.legend(loc="best", fontsize=11)
+    ax1.set_title("Threshold Scan", fontsize=14, loc="right")
+    atlas_label(ax1, loc=0, fontsize=14)
+
+    # Right: Binned significance
+    ax2 = axes[1]
+    width = bin_centers[1] - bin_centers[0] if len(bin_centers) > 1 else 0.1
+    ax2.bar(bin_centers, bin_significances, width=width * 0.8, color="C0", alpha=0.7, label="Per-bin Z")
+    ax2.axhline(
+        integrated_significance, color="C3", ls="-", lw=2.5, label=f"Integrated Z = {integrated_significance:.3f}"
+    )
+    ax2.set_xlabel("Signal Score Bin Center", fontsize=14)
+    ax2.set_ylabel("Significance (Asimov)", fontsize=14)
+    ax2.set_ylim(bottom=0.0)
+    ax2.legend(loc="best", fontsize=11)
+    ax2.set_title("Binned Significance", fontsize=14, loc="right")
+    atlas_label(ax2, loc=0, fontsize=14)
+
+    fig.suptitle(name, fontsize=16)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+
+    save_plot(fig, f"{save_path}/significance_summary_{name}_{save_postfix}.pdf", use_format="pdf")
