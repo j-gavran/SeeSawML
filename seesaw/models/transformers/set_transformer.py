@@ -414,6 +414,7 @@ class SetTransformer(nn.Module):
         flat_model_fuse: dict[str, Any] | None = None,
         first_attn_no_residual: bool = False,
         sdp_backend: dict[str, bool] | None = None,
+        valid_type_values: dict[str, list[int]] | None = None,
     ) -> None:
         super().__init__()
 
@@ -458,6 +459,7 @@ class SetTransformer(nn.Module):
             post_embeddings_dct=embedding_config_dct.get("post_embeddings_dct", None),
             ple_dct=embedding_config_dct.get("ple_config", None),
             add_particle_types=add_particle_types,
+            valid_type_values=valid_type_values,
         )
 
         self.set_jagged_transformer = SetTransformerModel(
@@ -500,8 +502,13 @@ class SetTransformer(nn.Module):
                 fuse_kwargs=flat_model_fuse.get("fuse_kwargs", None),
             )
 
-    def forward(self, X_events: torch.Tensor, *Xs: torch.Tensor) -> torch.Tensor:
-        x_jagged, x_jagged_valid = self.jagged_preprocessor(*Xs)
+    def forward(
+        self,
+        X_events: torch.Tensor,
+        *Xs: torch.Tensor,
+        type_tensors: list[torch.Tensor | None] | None = None,
+    ) -> torch.Tensor:
+        x_jagged, x_jagged_valid = self.jagged_preprocessor(*Xs, type_tensors=type_tensors)
         x_jagged_object_mask = rearrange(x_jagged_valid, "b i -> b 1 1 i")
 
         x_pooling_valid = torch.ones(x_jagged.shape[0], self.num_seeds, dtype=torch.bool, device=x_jagged.device)

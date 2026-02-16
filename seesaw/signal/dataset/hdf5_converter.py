@@ -23,6 +23,7 @@ from f9columnar.run import ColumnarEventLoop
 from f9columnar.utils.helpers import dump_json, load_json, open_root_file
 from omegaconf import DictConfig
 
+from seesaw.utils.constants import PARTICLE_PREFIX_MAP
 from seesaw.utils.loggers import setup_logger
 
 
@@ -169,28 +170,84 @@ class LabelsProcessor(Processor):
         return {"arrays": arrays}
 
 
-class UnknownLeptonProcessor(Processor):
-    def __init__(self) -> None:
-        super().__init__(name="unknownLeptonProcessor")
+class TypeFieldProcessor(Processor):
+    """Filter invalid particles and events, then pad type fields.
+
+    Performs three operations:
+
+    1. Particle filtering: If ``remove_invalid=True``, removes individual particles
+       with invalid type values from all related fields.
+    2. Event filtering: After particle filtering, removes events with zero valid particles.
+    3. Type field padding: Pads type fields to ``max_length`` with 0 (invalid).
+
+    Parameters
+    ----------
+    max_lengths : dict[str, int]
+        Maximum number of objects per event for each object type.
+        Keys are object names (e.g., "jets", "electrons").
+    type_field_config : dict[str, dict[str, Any]]
+        Per-object configuration with keys:
+
+        - ``type_field`` : str - Field name (e.g., "jet_type")
+        - ``valid_type_values`` : list[int] - Valid values (e.g., [2] for Tight)
+        - ``remove_invalid`` : bool - Whether to filter invalid particles and events
+    """
+
+    def __init__(
+        self,
+        max_lengths: dict[str, int],
+        type_field_config: dict[str, dict[str, Any]],
+    ) -> None:
+        super().__init__(name="typeFieldProcessor")
+        self.max_lengths = max_lengths
+        self.type_field_config = type_field_config
 
     def run(self, arrays: ak.Array) -> dict[str, ak.Array]:
-        if "el_type" in arrays.fields:
-            unknown_mask = arrays["el_type"] != 3
+        n_before = len(arrays)
+        event_mask = None
 
-            for field in arrays.fields:
-                if field.startswith("el_"):
-                    arrays[field] = arrays[field][unknown_mask]
+        for obj_name, config in self.type_field_config.items():
+            type_field = config.get("type_field")
+            valid_type_values = config.get("valid_type_values", [])
+            remove_invalid = config.get("remove_invalid", False)
 
-            arrays = ak.without_field(arrays, "el_type")
+            if not type_field or type_field not in arrays.fields:
+                continue
+            if not valid_type_values:
+                continue
 
-        if "mu_type" in arrays.fields:
-            unknown_mask = arrays["mu_type"] != 3
+            type_values = arrays[type_field]
+            is_valid = ak.zeros_like(type_values, dtype=bool)
+            for valid_val in valid_type_values:
+                is_valid = is_valid | (type_values == valid_val)
 
-            for field in arrays.fields:
-                if field.startswith("mu_"):
-                    arrays[field] = arrays[field][unknown_mask]
+            if remove_invalid:
+                # Step 1: Compute event mask BEFORE filtering particles
+                has_valid = ak.sum(is_valid, axis=-1) >= 1
+                event_mask = has_valid if event_mask is None else (event_mask & has_valid)
 
-            arrays = ak.without_field(arrays, "mu_type")
+                # Step 2: Filter individual particles - apply mask to ALL fields with same prefix
+                prefix = PARTICLE_PREFIX_MAP.get(obj_name)
+                if prefix:
+                    for field in arrays.fields:
+                        if field.startswith(f"{prefix}_"):
+                            arrays[field] = arrays[field][is_valid]
+
+        if event_mask is not None:
+            arrays = arrays[event_mask]
+
+        # Step 3: Pad type fields with 0 (invalid value for masking)
+        for obj_name, config in self.type_field_config.items():
+            type_field = config.get("type_field")
+            if not type_field or type_field not in arrays.fields:
+                continue
+
+            max_len = self.max_lengths.get(obj_name)
+            if max_len is None:
+                raise ValueError(f"No max_length for '{obj_name}' but type_field is set")
+
+            padded = ak.pad_none(arrays[type_field], max_len, clip=True)
+            arrays[type_field] = ak.fill_none(padded, 0)
 
         return {"arrays": arrays}
 
@@ -341,8 +398,21 @@ def build_hdf_writer_analysis(
         analysis_collection += SignalMassProcessor(signal_label, ml_mass_branches)
         analysis_collection += LabelsProcessor(labels, signal_label=signal_label, other_label=other_label)
 
+    # Extract type field config directly from contents_config (not jagged_branches, which is filtered)
+    type_field_config: dict[str, dict[str, Any]] = {}
+    jagged_config = contents_config.get("jagged", {})
+    for obj_name, obj_config in jagged_config.items():
+        type_field = obj_config.get("type_field")
+        valid_type_values = obj_config.get("valid_type_values")
+        remove_invalid = obj_config.get("remove_invalid", False)
+        if type_field is not None:
+            type_field_config[obj_name] = {
+                "type_field": type_field,
+                "valid_type_values": list(valid_type_values) if valid_type_values else [],
+                "remove_invalid": remove_invalid,
+            }
+
     if len(jagged_branches) != 0:
-        analysis_collection += UnknownLeptonProcessor()
         if same_sign_leptons and "el_charge" in input_branches and "mu_charge" in input_branches:
             logging.info("Same sign leptons enabled.")
             analysis_collection += SameSignProcessor()
@@ -366,6 +436,10 @@ def build_hdf_writer_analysis(
     jagged_object_output_columns = {}
     for key, object_dct in jagged_branches.items():
         jagged_object_output_columns[key] = object_dct["output"] + object_dct["extra_output"]
+
+    # Filter events and pad type fields
+    if len(jagged_branches) != 0 and type_field_config:
+        analysis_collection += TypeFieldProcessor(max_lengths, type_field_config)
 
     hdf5_writer = Hdf5WriterProcessor(
         file_path=output_file,

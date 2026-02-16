@@ -11,6 +11,7 @@ from lightning.pytorch import seed_everything
 from omegaconf import DictConfig, OmegaConf, open_dict
 
 from seesaw.models.calibration import get_calibration_split, get_calibration_wrapper
+from seesaw.utils.constants import add_type_fields_to_features
 from seesaw.models.nn_modules import BaseLightningModule
 from seesaw.models.tracker import Tracker
 from seesaw.models.utils import load_model_from_config
@@ -39,7 +40,17 @@ def get_signal_data_module(
     model_name: str,
     events_only: bool = True,
     is_calibration: bool = False,
+    model_conf: DictConfig | None = None,
 ) -> L.LightningDataModule:
+    # Auto-add type fields if valid_type_values is configured
+    features = list(dataset_conf.features)
+    original_count = len(features)
+    if model_conf is not None:
+        valid_type_values = model_conf.architecture_config.get("valid_type_values", None)
+        features = add_type_fields_to_features(features, valid_type_values)
+        if len(features) > original_count:
+            logging.info(f"[green]DataModule features expanded: {original_count} -> {len(features)} features[/green]")
+
     feature_scaling_config = dataset_conf.get("feature_scaling", None)
 
     if feature_scaling_config is not None:
@@ -102,7 +113,7 @@ def get_signal_data_module(
     dm_iter = LightningHdf5DataModule(
         dm_name,
         dataset_conf.files,
-        dataset_conf.features,
+        features,
         stage_split_piles=stage_split_piles,
         shuffle=True,
         collate_fn=collate_func,
@@ -334,7 +345,9 @@ def sig_bkg_trainer(config: DictConfig) -> None:
     T_0 = get_T_0_from_scheduler_config(model_config)
     trainer = get_trainer(experiment_config, model_config.training_config, logger, callbacks, val_check_interval=T_0)
 
-    dm = get_signal_data_module(dataset_config, dataset_name, model_name, events_only=events_only)
+    dm = get_signal_data_module(
+        dataset_config, dataset_name, model_name, events_only=events_only, model_conf=model_config
+    )
 
     if continue_train:
         logging.info("[yellow]Continuing training from the loaded model...")

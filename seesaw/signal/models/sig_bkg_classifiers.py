@@ -327,26 +327,34 @@ class SigBkgFullNNClassifier(BaseSigBkgNNClassifier, BaseFullLightningModule):
         Xs: list[torch.Tensor],
         use_sigmoid: bool = False,
         use_softmax: bool = False,
+        type_tensors: list[torch.Tensor | None] | None = None,
     ) -> torch.Tensor:
         if self.training:
-            return self.model(X_events, *Xs)
+            return self.model(X_events, *Xs, type_tensors=type_tensors)
 
         if use_sigmoid:
-            return torch.sigmoid(self.model(X_events, *Xs))
+            return torch.sigmoid(self.model(X_events, *Xs, type_tensors=type_tensors))
 
         if use_softmax:
-            return torch.softmax(self.model(X_events, *Xs), dim=1)
+            return torch.softmax(self.model(X_events, *Xs, type_tensors=type_tensors), dim=1)
 
-        return self.model(X_events, *Xs)
+        return self.model(X_events, *Xs, type_tensors=type_tensors)
 
     def get_loss(
         self, batch: FullWeightedBatchType, stage: str | None = None
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         Xs: list[torch.Tensor] = []
+        type_tensors: list[torch.Tensor | None] = []
+        has_any_type_tensor = False
 
         for k in batch[0].keys():
             if k != "events":
                 Xs.append(batch[0][k][0])
+                # Extract type tensor from y_aux field (index 3)
+                type_tensor = batch[0][k][3]
+                type_tensors.append(type_tensor)
+                if type_tensor is not None:
+                    has_any_type_tensor = True
 
         X_events = batch[0]["events"][0]
         y, w = batch[0]["events"][1], batch[0]["events"][2]
@@ -354,7 +362,8 @@ class SigBkgFullNNClassifier(BaseSigBkgNNClassifier, BaseFullLightningModule):
         if y is None or w is None:
             raise ValueError("y, or w is None, cannot compute loss!")
 
-        y_hat = self(X_events, Xs)
+        # Pass type_tensors if any are available, else None
+        y_hat = self(X_events, Xs, type_tensors=type_tensors if has_any_type_tensor else None)
 
         loss = self.get_classifier_loss(X_events, y, w, y_hat, batch[1], stage)
 

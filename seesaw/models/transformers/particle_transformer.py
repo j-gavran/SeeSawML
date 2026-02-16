@@ -46,6 +46,7 @@ class ParticleTransformer(nn.Module):
         particle_attention: ParticleAttentionConfig | None = None,
         first_attn_no_residual: bool = False,
         sdp_backend: dict[str, bool] | None = None,
+        valid_type_values: dict[str, list[int]] | None = None,
     ) -> None:
         super().__init__()
 
@@ -99,6 +100,7 @@ class ParticleTransformer(nn.Module):
             post_embeddings_dct=embedding_config_dct.get("post_embeddings_dct", None),
             ple_dct=embedding_config_dct.get("ple_config", None),
             add_particle_types=add_particle_types,
+            valid_type_values=valid_type_values,
         )
 
         self.particle_blocks = nn.ModuleList(
@@ -168,8 +170,13 @@ class ParticleTransformer(nn.Module):
                 fuse_kwargs=flat_model_fuse.get("fuse_kwargs", None),
             )
 
-    def forward(self, X_events: torch.Tensor, *Xs: torch.Tensor) -> torch.Tensor:
-        x_jagged, x_jagged_valid = self.jagged_preprocessor(*Xs)
+    def forward(
+        self,
+        X_events: torch.Tensor,
+        *Xs: torch.Tensor,
+        type_tensors: list[torch.Tensor | None] | None = None,
+    ) -> torch.Tensor:
+        x_jagged, x_jagged_valid = self.jagged_preprocessor(*Xs, type_tensors=type_tensors)
         particle_adjacency_mask = build_adjacency_attention_mask(x_jagged_valid)
 
         pairwise_bias: torch.Tensor | None = None

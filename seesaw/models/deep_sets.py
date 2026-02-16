@@ -181,6 +181,7 @@ class JaggedDeepsets(nn.Module):
         flat_embeddings_fuse: dict[str, Any] | None = None,
         flat_model: nn.Module | None = None,
         flat_model_fuse: dict[str, Any] | None = None,
+        valid_type_values: dict[str, list[int]] | None = None,
         **act_kwargs,
     ) -> None:
         super().__init__()
@@ -228,6 +229,7 @@ class JaggedDeepsets(nn.Module):
             post_embeddings_dct=embedding_config_dct.get("post_embeddings_dct", None),
             ple_dct=embedding_config_dct.get("ple_config", None),
             add_particle_types=add_particle_types,
+            valid_type_values=valid_type_values,
         )
 
         self.phi = _setup_encoder(encoder_layers_dim, act, use_batchnorm, dropout, **act_kwargs)
@@ -260,9 +262,14 @@ class JaggedDeepsets(nn.Module):
                 fuse_kwargs=flat_model_fuse.get("fuse_kwargs", None),
             )
 
-    def forward(self, X_events: torch.Tensor, *Xs: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        X_events: torch.Tensor,
+        *Xs: torch.Tensor,
+        type_tensors: list[torch.Tensor | None] | None = None,
+    ) -> torch.Tensor:
         # N x (batch_size, n_objects, features) -> (batch_size, n_objects, embedding_dim)
-        x_jagged, x_jagged_valid = self.jagged_preprocessor(*Xs)
+        x_jagged, x_jagged_valid = self.jagged_preprocessor(*Xs, type_tensors=type_tensors)
 
         if self.flat_embeddings is not None:
             x_flat = self.flat_embeddings(X_events)

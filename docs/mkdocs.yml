@@ -12,6 +12,7 @@ nav:
     - lxplus HTCondor: start/lxplus.md
   - Data Pipeline:
     - HDF5 Conversion: data_pipeline/hdf5_conversion.md
+    - Type-Based Masking: data_pipeline/type_masking.md
     - Datasets: data_pipeline/dataset.md
   - Training:
     - Training: training/training.md

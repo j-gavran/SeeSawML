@@ -7,6 +7,8 @@ from typing import Any, Type
 import numpy as np
 import torch
 import torch.nn as nn
+
+from seesaw.utils.constants import add_type_fields_to_features
 from f9columnar.ml.dataloader_helpers import ColumnSelection, column_selection_from_dict
 from f9columnar.ml.hdf5_dataloader import get_column_selection
 from f9columnar.ml.scalers import CategoricalFeatureScaler
@@ -244,6 +246,25 @@ def _build_events_network(
     return model
 
 
+def _get_valid_type_values(architecture_config: DictConfig) -> dict[str, list[int]]:
+    """Extract valid type values for mask derivation from config.
+
+    Parameters
+    ----------
+    architecture_config : DictConfig
+        Architecture config, may contain ``valid_type_values``.
+
+    Returns
+    -------
+    dict[str, list[int]]
+        Valid type values for each object type. Empty if not configured.
+    """
+    valid_type_values_config = architecture_config.get("valid_type_values", None)
+    if valid_type_values_config is None:
+        return {}
+    return {k: list(v) for k, v in valid_type_values_config.items()}
+
+
 def _build_jagged_network(
     selection: ColumnSelection,
     dataset_conf: DictConfig,
@@ -308,6 +329,8 @@ def _build_jagged_network(
             continue
 
         object_dims[dataset_name] = selection[dataset_name].shape[1]
+
+    valid_type_values = _get_valid_type_values(architecture_config)
 
     classes = dataset_conf.get("classes", None)
     if classes is not None:
@@ -387,6 +410,7 @@ def _build_jagged_network(
             add_particle_types=architecture_config.get("add_particle_types", False),
             flat_model=events_model,
             flat_model_fuse=architecture_config.get("flat_model_fuse", {}),
+            valid_type_values=valid_type_values,
             **architecture_config.get("act_kwargs", {}),
         )
     elif model_name == "SetTransformer":
@@ -418,6 +442,7 @@ def _build_jagged_network(
             flat_model_fuse=architecture_config.get("flat_model_fuse", {}),
             first_attn_no_residual=architecture_config.get("first_attn_no_residual", False),
             sdp_backend=architecture_config.get("sdp_backend", None),
+            valid_type_values=valid_type_values,
         )
     elif model_name == "ParticleTransformer":
         particle_attention_config = build_particle_attention_config(
@@ -462,6 +487,7 @@ def _build_jagged_network(
             particle_attention=particle_attention_config,
             first_attn_no_residual=architecture_config.get("first_attn_no_residual", False),
             sdp_backend=architecture_config.get("sdp_backend", None),
+            valid_type_values=valid_type_values,
         )
     else:
         raise NotImplementedError("The model set in the params is not yet implemented!")
@@ -511,20 +537,25 @@ def build_network(
 
     path_to_selection = os.path.join(model_conf.training_config.model_save_path, f"{run_name}_selection.json")
 
-    if os.path.exists(path_to_selection):
+    # Auto-add type fields if valid_type_values is configured
+    features = list(dataset_conf.features)
+    valid_type_values = architecture_config.get("valid_type_values", None)
+    features = add_type_fields_to_features(features, valid_type_values)
+
+    if os.path.exists(path_to_selection) and not valid_type_values:
         logging.info(f"Loading saved column selection from {path_to_selection}.")
         selection_dct = load_json(path_to_selection)
         selection = column_selection_from_dict(selection_dct)
     else:
-        selection = get_column_selection(dataset_conf.files, dataset_conf.features)
-        logging.info(f"Using selection {str(selection)}.")
+        selection = get_column_selection(dataset_conf.files, features)
+    logging.info(f"Using selection {str(selection)}.")
 
-        if run_name is not None:
-            os.makedirs(model_conf.training_config.model_save_path, exist_ok=True)
-            selection.to_json(path_to_selection)
-            logging.info(f"Saved column selection to {run_name}_selection.json.")
-        else:
-            logging.warning("Run name not provided! The selection will not be saved.")
+    if run_name is not None:
+        os.makedirs(model_conf.training_config.model_save_path, exist_ok=True)
+        selection.to_json(path_to_selection)
+        logging.info(f"Saved column selection to {run_name}_selection.json.")
+    else:
+        logging.warning("Run name not provided! The selection will not be saved.")
 
     for c in selection["events"].used_columns:
         if "mlmass" in c:

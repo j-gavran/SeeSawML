@@ -88,11 +88,26 @@ def handle_full_signal_dataset(stacked_datasets: StackedDatasets, ml_iterator: M
 
     weighted_dataset_batch_dct["events"] = WeightedBatch(X, y, w, None)
 
+    # Map dataset names to type field names
+    type_field_map = {
+        "electrons": "el_type",
+        "jets": "jet_type",
+        "muons": "mu_type",
+    }
+
     for ds_name, ds in stacked_datasets.items():
         if ds_name == "events":
             continue
 
         X_other = ds.X.astype(np.float32)
+
+        # Extract type field for masking (stored in extra by f9columnar)
+        type_field_name = type_field_map.get(ds_name)
+        type_tensor = None
+        if type_field_name is not None:
+            type_tensor = ds.get_extra(type_field_name)
+            if type_tensor is not None:
+                type_tensor = type_tensor.astype(np.float32)
 
         if mask_unmapped is not None:
             if mask_unmapped.shape[0] != X_other.shape[0]:
@@ -100,9 +115,13 @@ def handle_full_signal_dataset(stacked_datasets: StackedDatasets, ml_iterator: M
                     f"Length mismatch: {ds_name} has {X_other.shape[0]}, events mask has {mask_unmapped.shape[0]}"
                 )
             X_other = X_other[mask_unmapped]
+            if type_tensor is not None:
+                type_tensor = type_tensor[mask_unmapped]
 
         if imbalanced_sampler is not None:
             X_other = X_other[resampled_indices]
+            if type_tensor is not None:
+                type_tensor = type_tensor[resampled_indices]
 
         if shuffle_idx is not None:
             if shuffle_idx.shape[0] != X_other.shape[0]:
@@ -110,8 +129,10 @@ def handle_full_signal_dataset(stacked_datasets: StackedDatasets, ml_iterator: M
                     f"Shuffle mismatch: {ds_name} length {X_other.shape[0]} vs events {shuffle_idx.shape[0]}"
                 )
             X_other = X_other[shuffle_idx]
+            if type_tensor is not None:
+                type_tensor = type_tensor[shuffle_idx]
 
-        weighted_dataset_batch_dct[ds_name] = WeightedBatch(X_other, None, None, None)
+        weighted_dataset_batch_dct[ds_name] = WeightedBatch(X_other, None, None, type_tensor)
 
     weighted_dataset_batch = WeightedDatasetBatch()
 
