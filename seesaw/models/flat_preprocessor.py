@@ -159,7 +159,7 @@ class Attention1DPoolingReduction(nn.Module):
         # normalize over f dimension only
         a = self.softmax(a)  # (b, 1, f)
 
-        y = torch.matmul(a, x)  # (b, 1, f) x (b, e, f) -> (b, 1, e)
+        y = torch.matmul(a, x.transpose(-1, -2))  # (b, 1, f) x (b, f, e) -> (b, 1, e)
         y = torch.squeeze(y, dim=1)  # (b, e)
 
         if not self.simple:

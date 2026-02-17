@@ -172,17 +172,21 @@ def setup_logger(
 
 
 def log_hydra_config(config: DictConfig) -> None:
-    log_file = logging.getLogger().handlers[1].baseFilename  # type: ignore
+    try:
+        log_file = logging.getLogger().handlers[1].baseFilename  # type: ignore
 
-    log_dir, log_name = os.path.dirname(log_file), os.path.basename(log_file).split(".")[0]
+        log_dir, log_name = os.path.dirname(log_file), os.path.basename(log_file).split(".")[0]
 
-    hydra_dir = os.path.join("/".join(log_dir.split("/")[:-1]), "hydra")
-    os.makedirs(hydra_dir, exist_ok=True)
+        hydra_dir = os.path.join("/".join(log_dir.split("/")[:-1]), "hydra")
+        os.makedirs(hydra_dir, exist_ok=True)
 
-    hydra_yaml = os.path.join(hydra_dir, f"{log_name}.yaml")
+        hydra_yaml = os.path.join(hydra_dir, f"{log_name}.yaml")
 
-    with open(hydra_yaml, "w") as f:
-        OmegaConf.save(config, f)
+        with open(hydra_yaml, "w") as f:
+            OmegaConf.save(config, f)
+
+    except Exception as e:
+        logging.info(f"Could not save hydra config, error {e}.")
 
 
 def get_batch_progress() -> Progress:
@@ -278,9 +282,11 @@ class CustomRichProgressBar(RichProgressBar):
         self.epoch_start_time = 0.0
 
     def on_train_epoch_start(self, *args: Any, **kwargs: Any) -> None:
+        super().on_train_epoch_start(*args, **kwargs)
         self.epoch_start_time = time.time()
 
     def on_train_epoch_end(self, *args: Any, **kwargs: Any) -> None:
+        super().on_train_epoch_end(*args, **kwargs)
         duration = time.time() - self.epoch_start_time
         self.epoch_durations.append(duration)
 

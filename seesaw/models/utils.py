@@ -89,6 +89,8 @@ def _build_events_network(
     if output_dim == 2:
         output_dim = 1
 
+    output_dim = architecture_config.get("output_dim", output_dim)
+
     embedding_config = architecture_config.get("embeddings", None)
     post_embeddings_config = architecture_config.get("post_embeddings", None)
 
@@ -340,6 +342,8 @@ def _build_jagged_network(
 
     if output_dim == 2:
         output_dim = 1
+
+    output_dim = architecture_config.get("output_dim", output_dim)
 
     embedding_config = architecture_config.get("embeddings", None)
     post_embeddings_config = architecture_config.get("post_embeddings", None)

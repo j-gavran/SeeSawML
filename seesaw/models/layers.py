@@ -1,4 +1,3 @@
-import math
 from typing import Any
 
 import torch
@@ -117,46 +116,6 @@ class FeatureWiseLinear(nn.Module):
         x_lin = [self.linear_layers[i](x_split[i].unsqueeze(-1)) for i in range(self.n_features)]
 
         return torch.stack(x_lin, dim=self.feature_idx)
-
-
-class StackedLinear(nn.Module):
-    def __init__(self, in_features: int, out_features: int, channels: int) -> None:
-        """Efficient implementation of linear layers for ensembles of networks.
-
-        Parameters
-        ----------
-        in_features : int
-            Number of input features.
-        out_features : int
-            Number of output features.
-        channels : int
-            Number of linear layers (channels) to stack.
-
-        References
-        ----------
-        [1] - https://github.com/luigifvr/ljubljana_ml4physics_25/blob/main/src/stackedlinear.py
-
-        """
-        super().__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.channels = channels
-
-        self.weight = nn.Parameter(torch.empty((channels, out_features, in_features)))
-        self.bias = nn.Parameter(torch.empty((channels, out_features)))
-
-        self.reset_parameters()
-
-    def reset_parameters(self) -> None:
-        for i in range(self.channels):
-            torch.nn.init.kaiming_uniform_(self.weight[i], a=math.sqrt(5))
-
-            fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.weight[i])
-            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            torch.nn.init.uniform_(self.bias[i], -bound, bound)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.baddbmm(self.bias[:, None, :], x, self.weight.transpose(1, 2))
 
 
 class MeanPoolingLayer(nn.Module):

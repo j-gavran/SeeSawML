@@ -343,8 +343,8 @@ def _get_nn_closure_hists(
     # assume model on gpu and put tensor on cuda
     loose_mc, loose_mc_w = X[loose_mc_mask].cuda(), w[loose_mc_mask]
 
-    loose_data_nn_w = nn_reweight(model, loose_data, density_ratio).cpu().numpy().flatten()  # type: ignore
-    loose_mc_nn_w = nn_reweight(model, loose_mc, density_ratio).cpu().numpy().flatten()  # type: ignore
+    loose_data_nn_w, _ = nn_reweight(model, loose_data, density_ratio).cpu().numpy().flatten()  # type: ignore
+    loose_mc_nn_w, _ = nn_reweight(model, loose_mc, density_ratio).cpu().numpy().flatten()  # type: ignore
 
     # fill nn weights histograms
     closure_hists["nn_weight"]["loose_data_weight"].fill(loose_data_nn_w)
