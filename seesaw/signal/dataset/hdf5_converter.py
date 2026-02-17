@@ -279,6 +279,40 @@ class ScaleWZjetsProcessor(Processor):
         return {"arrays": arrays}
 
 
+class ReplaceInfProcessor(Processor):
+    def __init__(self, columns: list[str], replace_value: float) -> None:
+        super().__init__(name="replaceInfProcessor")
+        self.columns = columns
+        self.replace_value = replace_value
+
+    def _get_primitive(self, array: ak.Array) -> str | None:
+        t = ak.type(array)
+        while hasattr(t, "content"):
+            t = t.content
+        return getattr(t, "primitive", None)
+
+    def _cast_replace_value(self, primitive: str) -> Any:
+        try:
+            return np.asarray(self.replace_value, dtype=primitive)[()]
+        except Exception:
+            return self.replace_value
+
+    def run(self, arrays: ak.Array) -> dict[str, ak.Array]:
+        for column in self.columns:
+            if column not in arrays.fields:
+                continue
+
+            data = arrays[column]
+            primitive = self._get_primitive(data)
+            if primitive is None or not str(primitive).startswith("float"):
+                continue
+
+            replace_value = self._cast_replace_value(str(primitive))
+            arrays[column] = ak.where(np.isinf(data), replace_value, data)
+
+        return {"arrays": arrays}
+
+
 class SameSignProcessor(Processor):
     def __init__(self) -> None:
         super().__init__(name="sameSignProcessor")
@@ -377,6 +411,8 @@ def build_hdf_writer_analysis(
     scale_dct: dict[str, float] | None = None,
     same_sign_leptons: bool = False,
     scale_wzjets: bool = False,
+    replace_infs: bool = False,
+    inf_replace: float = 0.0,
     num_workers: int = 1,
 ) -> tuple[ProcessorsCollection, ProcessorsGraph]:
     analysis_collection = ProcessorsCollection("analysisCollection")
@@ -432,6 +468,13 @@ def build_hdf_writer_analysis(
         flat_output_columns = flat_branches["output"] + flat_branches["extra_output"]
     else:
         flat_output_columns = []
+
+    if replace_infs:
+        logging.info(f"Replacing inf values in flat branches with {inf_replace}.")
+        logging.warning(
+            "THIS IS A TEMPORARY FIX! Check: https://gitlab.cern.ch/atlas-dch-seesaw-analyses/SeeSawML/-/issues/18."
+        )
+        analysis_collection += ReplaceInfProcessor(flat_output_columns, inf_replace)
 
     jagged_object_output_columns = {}
     for key, object_dct in jagged_branches.items():
@@ -497,6 +540,8 @@ def convert_to_hdf5(
     same_sign_leptons: bool = False,
     scale_wzjets: bool = False,
     disable_other_label: bool = False,
+    replace_infs: bool = False,
+    inf_replace: float = 0.0,
     output_file: str,
 ) -> bool:
     if signal_label and any(signal_label in label for label in labels):
@@ -545,6 +590,8 @@ def convert_to_hdf5(
         scale_dct=scale_dct,
         same_sign_leptons=same_sign_leptons,
         scale_wzjets=scale_wzjets,
+        replace_infs=replace_infs,
+        inf_replace=inf_replace,
         num_workers=dataloader_config["num_workers"],
     )
 
@@ -688,6 +735,8 @@ def main(config: DictConfig) -> None:
     custom_chunk_shapes_dct = config.hdf5_config.get("custom_chunk_shapes", None)
     enforced_types_dct = config.hdf5_config.get("enforce_types", None)
     scale_dct = config.hdf5_config.get("scale", None)
+    replace_infs = convert_config.get("replace_infs", False)
+    inf_replace = convert_config.get("inf_replace", 0.0)
 
     other_label = convert_to_hdf5(
         analysis_dir=ml_data_dir,
@@ -706,6 +755,8 @@ def main(config: DictConfig) -> None:
         same_sign_leptons=convert_config.get("same_sign_leptons", False),
         scale_wzjets=convert_config.get("scale_wzjets", False),
         disable_other_label=convert_config.get("disable_other_label", False),
+        replace_infs=replace_infs,
+        inf_replace=inf_replace,
         output_file=os.path.join(output_dir, convert_config.output_file),
     )
 
