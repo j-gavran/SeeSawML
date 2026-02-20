@@ -449,8 +449,14 @@ class RatioTracker(Tracker):
         self.dists: dict[str, hist.Hist] = {}
 
     def on_new_epoch(self) -> None:
-        self.dists["logits"] = hist.Hist(hist.axis.Variable(np.linspace(-10.0, 10.0, 100), name="logits"))
-        self.dists["density"] = hist.Hist(hist.axis.Variable(np.linspace(-1.0, 20.0, 100), name="density"))
+        density_h, logits_h = (-5.0, 5.0, 100), (0.0, 5.0, 100)
+
+        if "ratio" in self.plotting_conf["subtraction_plot"]:
+            density_h = tuple(self.plotting_conf["subtraction_plot"]["ratio"].get("density", density_h))
+            logits_h = tuple(self.plotting_conf["subtraction_plot"]["ratio"].get("logits", logits_h))
+
+        self.dists["logits"] = hist.Hist(hist.axis.Variable(np.linspace(*logits_h), name="logits"))
+        self.dists["density"] = hist.Hist(hist.axis.Variable(np.linspace(*density_h), name="density"))
 
         if self.module.has_ensemble:
             self.dists["logits_up"] = copy.deepcopy(self.dists["logits"])

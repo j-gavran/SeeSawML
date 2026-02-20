@@ -334,7 +334,7 @@ def sig_bkg_trainer(config: DictConfig) -> None:
         experiment_config.run_name,
         monitor=model_config.training_config.monitor,
         monitor_mode=model_config.training_config.get("monitor_mode", "min"),
-        tqdm_refresh_rate=experiment_config.get("tqdm_refresh_rate", 100),
+        refresh_rate=experiment_config.get("refresh_rate", 100),
     )
 
     logger = get_logger(

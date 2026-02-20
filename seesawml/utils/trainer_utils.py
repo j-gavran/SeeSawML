@@ -39,7 +39,7 @@ def get_callbacks(
     run_name: str,
     monitor: str = "val_loss",
     monitor_mode: str = "min",
-    tqdm_refresh_rate: int = 100,
+    refresh_rate: int = 100,
 ) -> list[L.Callback]:
     logging.info(f"Monitoring {monitor_mode} {monitor} for early stopping and model checkpointing.")
 
@@ -69,7 +69,7 @@ def get_callbacks(
             save_top_k=training_conf.get("save_top_k", 3),
             save_last=True,
         ),
-        CustomRichProgressBar(refresh_rate=tqdm_refresh_rate),
+        CustomRichProgressBar(refresh_rate=refresh_rate),
     ]
     return callbacks
 

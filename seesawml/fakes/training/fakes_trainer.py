@@ -273,7 +273,7 @@ def fakes_trainer(config: DictConfig, trial: optuna.trial.Trial | None = None) -
         model_config.training_config,
         experiment_config.run_name,
         monitor=model_config.training_config.monitor if trial is None else config.tuning_config.monitor,
-        tqdm_refresh_rate=experiment_config.get("tqdm_refresh_rate", 100),
+        refresh_rate=experiment_config.get("refresh_rate", 100),
     )
 
     if trial is not None:

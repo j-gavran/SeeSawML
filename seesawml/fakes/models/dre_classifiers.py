@@ -97,8 +97,6 @@ class NumDenClassifier(FakesNNClassifier):
     ) -> None:
         super().__init__(dataset_conf, model_conf, run_name, tracker)
 
-        self.save_hyperparameters(ignore=["tracker", "loss_func", "model"])
-
     def get_accuracy(self, y_hat: torch.Tensor, batch: WeightedBatchType) -> torch.Tensor:
         return self.binary_acc(y_hat, batch[1])
 
@@ -196,8 +194,6 @@ class RatioClassifier(FakesNNClassifier):
 
         if den_model is not None:
             self.den_model = den_model.eval()
-
-        self.save_hyperparameters(ignore=["tracker", "loss_func", "density_ratio", "model", "num_model", "den_model"])
 
     def state_dict(self) -> dict[str, Any]:  # type: ignore
         return {k: v for k, v in super().state_dict().items() if k.startswith("model.")}

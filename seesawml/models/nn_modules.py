@@ -177,7 +177,17 @@ class BaseEventsLightningModule(BaseLightningModule):
         tracker: Tracker | None = None,
     ) -> None:
         super().__init__(dataset_conf, model_conf, run_name, tracker)
-        self.save_hyperparameters(ignore=["tracker", "loss_func", "binary_acc", "multi_acc", "model"])
+        self.save_hyperparameters(
+            ignore=[
+                "tracker",
+                "loss_func",
+                "binary_acc",
+                "multi_acc",
+                "model",
+                "num_model",
+                "den_model",
+            ]
+        )
 
     @abstractmethod
     def get_loss(self, batch: WeightedBatchType, stage: str | None = None) -> tuple[torch.Tensor, torch.Tensor | None]:
@@ -291,6 +301,18 @@ class BaseBatchCompletedLightningModule(BaseEventsLightningModule):
         tracker: Tracker | None = None,
     ) -> None:
         super().__init__(dataset_conf, model_conf, run_name, tracker)
+
+    def on_train_epoch_end(self) -> None:
+        scheduler_conf = self.training_conf.get("scheduler", None)
+        if scheduler_conf is not None and scheduler_conf.get("interval", "step") == "epoch":
+            schedulers = self.lr_schedulers()
+            if schedulers is not None:
+                if not isinstance(schedulers, list):
+                    schedulers = [schedulers]
+                for scheduler in schedulers:
+                    if not isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                        scheduler.step()
+        super().on_train_epoch_end()
 
     @abstractmethod
     def get_loss(self, batch: WeightedBatchType, stage: str | None = None) -> Any:

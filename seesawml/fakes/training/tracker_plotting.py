@@ -414,17 +414,6 @@ def plot_ratio_distributions(
             plot_hist(h_up, ax=ax, histtype="step", lw=2, color="C1", linestyle="--", label="Up")
             plot_hist(h_down, ax=ax, histtype="step", lw=2, color="C2", linestyle="--", label="Down")
 
-            edges = h_nominal.axes[0].edges
-            x_fill = np.concatenate([[edges[0]], np.repeat(edges[1:-1], 2), [edges[-1]]])
-            ax.fill_between(
-                x_fill,
-                np.repeat(h_down.values(), 2),
-                np.repeat(h_up.values(), 2),
-                alpha=0.3,
-                color="C0",
-                label=r"$\pm 1\sigma$",
-            )
-
         ax.set_xlabel(k.capitalize())
         ax.set_ylabel("Events")
         ax.set_yscale("log")
