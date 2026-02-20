@@ -124,9 +124,7 @@ def main(config: DictConfig) -> None:
         quantile_bins_dct[ds_key] = []
         for digest in quantile_digests[ds_key]:
             bins = digest.inverse_cdf(bins_range).astype(np.float32)
-
-            bins = np.concatenate(([-np.inf], bins, [np.inf]))
-
+            # Store only finite bin edges; PLE handles below/above explicitly
             bins = np.unique(bins)
             quantile_bins_dct[ds_key].append(bins)
 
@@ -139,7 +137,7 @@ def main(config: DictConfig) -> None:
         for f_i, bins in enumerate(quantile_bins_dct[ds_key]):
             f_i_name = features_names[f_i]
             round_bins = [float(f"{b:.2e}") for b in bins]
-            log_str += f"{f_i_name}: {round_bins[1:-1]} (n_edges={len(bins)})\n"
+            log_str += f"{f_i_name}: {round_bins} (n_edges={len(bins)})\n"
 
         logging.info(log_str[:-1])
 

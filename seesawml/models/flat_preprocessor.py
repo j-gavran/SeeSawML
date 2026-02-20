@@ -82,7 +82,7 @@ class FlatPLENumEmbeddingModel(nn.Module):
         if learn_bins or uniform_bins:
             for i in range(num_numerical_types):
                 learnable_ple = LearnablePiecewiseEncodingLayer(
-                    bins=ple_dct["n_bins"],
+                    n_bins=ple_dct["n_bins"],
                     embedding_dim=embedding_dim,
                     act=act,
                     learn_bins=True if learn_bins else False,
