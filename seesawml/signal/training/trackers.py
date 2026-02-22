@@ -17,17 +17,17 @@ from torchmetrics.classification import (
 )
 
 from seesawml.models.tracker import Tracker
-from seesawml.signal.metrics.significance import (
-    binned_significance,
-    compute_signal_score,
-    scan_significance,
-)
 from seesawml.signal.training.group_plotting import (
     plot_group_one_vs_rest_discriminant,
     plot_group_one_vs_rest_roc,
     plot_group_one_vs_rest_score,
     plot_multiclass_group_discriminant,
     plot_multiclass_group_score,
+)
+from seesawml.signal.training.significance import (
+    binned_significance,
+    compute_signal_score,
+    scan_significance,
 )
 from seesawml.signal.training.tracker_plotting import (
     plot_binary_bkg_rej_vs_sig_eff,

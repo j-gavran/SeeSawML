@@ -259,9 +259,6 @@ def sample_subtraction_weights(
         Input feature tensor of shape `(N, D)`.
     channels : int
         Number of ratio-ensemble members (output first dimension).
-    density_ratio : DensityRatio
-        Used only to dispatch the correct weight formula via `mc_label`
-        and `data_label`.
     mc_label : int, optional
         Label assigned to MC events during subtraction training, by default 0.
     data_label : int, optional
