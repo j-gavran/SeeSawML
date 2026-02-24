@@ -1,9 +1,9 @@
 # Plotting
 
-::: seesaw.signal.dataset.plot_signal
+::: seesawml.signal.dataset.plot_signal
     options:
         show_root_heading: true
 
-::: seesaw.signal.dataset.plot_pairwise
+::: seesawml.signal.dataset.plot_pairwise
     options:
         show_root_heading: true

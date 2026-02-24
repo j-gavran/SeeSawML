@@ -9,7 +9,7 @@ nav:
     - Installation: start/install.md
     - Running the Code: start/run.md
     - YAML Configuration: start/config_yaml.md
-    - lxplus HTCondor: start/lxplus.md
+    - lxplus: start/lxplus.md
   - Data Pipeline:
     - HDF5 Conversion: data_pipeline/hdf5_conversion.md
     - Type-Based Masking: data_pipeline/type_masking.md
@@ -24,6 +24,7 @@ nav:
     - Transformers: models/transformers.md
   - Evaluation:
     - Plotting: evaluation/plotting.md
+    - Significance: evaluation/significance.md
     - Exporting to ONNX: evaluation/onnx.md
   - Examples:
     - Model Configuration Examples: examples/model_configs.md
@@ -42,7 +43,6 @@ nav:
       - Plotting: api/signal/plotting.md
       - Models: api/signal/models.md
       - Training: api/signal/training.md
-      - Significance Metrics: api/signal/significance_calculation.md
     - Fake Estimation:
       - Preparation: api/fakes/preparation.md
       - Models: api/fakes/models.md

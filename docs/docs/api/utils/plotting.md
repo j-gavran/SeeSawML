@@ -1,17 +1,17 @@
 # Plotting
 
-::: seesaw.utils.labels
+::: seesawml.utils.labels
     options:
         show_root_heading: true
 
-::: seesaw.utils.features
+::: seesawml.utils.features
     options:
         show_root_heading: true
 
-::: seesaw.utils.plot_piles
+::: seesawml.utils.plot_piles
     options:
         show_root_heading: true
 
-::: seesaw.utils.plots_utils
+::: seesawml.utils.plots_utils
     options:
         show_root_heading: true

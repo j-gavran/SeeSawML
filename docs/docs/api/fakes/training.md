@@ -1,25 +1,25 @@
 # Training
 
-::: seesaw.fakes.training.fakes_trainer
+::: seesawml.fakes.training.fakes_trainer
     options:
         show_root_heading: true
 
-::: seesaw.fakes.training.run_pt_sliced_training
+::: seesawml.fakes.training.run_pt_sliced_training
     options:
         show_root_heading: true
 
-::: seesaw.fakes.training.run_training
+::: seesawml.fakes.training.run_training
     options:
         show_root_heading: true
 
-::: seesaw.fakes.training.trackers
+::: seesawml.fakes.training.trackers
     options:
         show_root_heading: true
 
-::: seesaw.fakes.training.tracker_plotting
+::: seesawml.fakes.training.tracker_plotting
     options:
         show_root_heading: true
 
-::: seesaw.fakes.utils
+::: seesawml.fakes.utils
     options:
         show_root_heading: true

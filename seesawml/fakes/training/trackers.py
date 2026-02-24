@@ -4,6 +4,7 @@ import copy
 import os
 
 import hist
+import torch
 import mplhep as hep
 import numpy as np
 from f9columnar.ml.dataloader_helpers import DatasetColumn, column_selection_from_dict
@@ -20,7 +21,6 @@ from seesawml.fakes.training.tracker_plotting import (
     plot_ratio_distributions,
 )
 from seesawml.fakes.utils import get_num_den_weights, get_num_den_weights_with_errors
-from seesawml.models.ensembles import torch_predict_from_ensemble_logits
 from seesawml.models.tracker import Tracker
 from seesawml.utils.helpers import get_log_binning, to_cpu_numpy
 
@@ -478,9 +478,14 @@ class RatioTracker(Tracker):
         X = batch[0]
 
         model_output = self.module(X)
-        y_hat_mean, y_hat_std = torch_predict_from_ensemble_logits(model_output)
+        logits = model_output.squeeze(-1)  # (channels, batch)
 
-        y_ratio_mean, y_ratio_std = self.density_ratio.ratio_with_errors(y_hat_mean, y_hat_std)
+        y_hat_mean = torch.mean(logits, dim=0)
+        y_hat_std = torch.std(logits, dim=0)
+
+        r_samples = torch.exp(logits)
+        y_ratio_mean = torch.mean(r_samples, dim=0)
+        y_ratio_std = torch.std(r_samples, dim=0)
 
         y_hat_mean_np, y_hat_std_np = to_cpu_numpy(y_hat_mean, y_hat_std)
         y_ratio_mean_np, y_ratio_std_np = to_cpu_numpy(y_ratio_mean, y_ratio_std)

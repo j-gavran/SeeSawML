@@ -1,13 +1,13 @@
 # Preprocessing
 
-::: seesaw.models.flat_preprocessor
+::: seesawml.models.flat_preprocessor
     options:
         show_root_heading: true
 
-::: seesaw.models.jagged_preprocessor
+::: seesawml.models.jagged_preprocessor
     options:
         show_root_heading: true
 
-::: seesaw.models.ple
+::: seesawml.models.ple
     options:
         show_root_heading: true

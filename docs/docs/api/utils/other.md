@@ -1,25 +1,25 @@
 # Other
 
-::: seesaw.utils.loggers
+::: seesawml.utils.loggers
     options:
         show_root_heading: true
 
-::: seesaw.utils.dsid_store
+::: seesawml.utils.dsid_store
     options:
         show_root_heading: true
 
-::: seesaw.utils.pile_statistics
+::: seesawml.utils.pile_statistics
     options:
         show_root_heading: true
 
-::: seesaw.utils.tuning
+::: seesawml.utils.tuning
     options:
         show_root_heading: true
 
-::: seesaw.utils.download_open_data
+::: seesawml.utils.download_open_data
     options:
         show_root_heading: true
 
-::: seesaw.utils.setup.run_setup
+::: seesawml.utils.setup.run_setup
     options:
         show_root_heading: true

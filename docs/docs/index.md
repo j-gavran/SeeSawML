@@ -18,7 +18,7 @@ Every step of the workflow is configurable via YAML configuration files, making 
 
 ![workflow](images/workflow.svg)
 
-Data conversion, loading, and preprocessing are handled by the [`F9Columnar`](https://gitlab.cern.ch/ijs-f9-ljubljana/F9Columnar)
+Data conversion, loading, and preprocessing are handled by the [F9Columnar](https://gitlab.cern.ch/ijs-f9-ljubljana/F9Columnar)
 library, while model architectures and training logic are implemented in SeeSawML.
 
 ## Contributing

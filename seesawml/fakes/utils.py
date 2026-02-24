@@ -1,7 +1,7 @@
 import numpy as np
 import torch
-from f9columnar.ml.hdf5_dataloader import MLHdf5Iterator, StackedDatasets, WeightedBatch, WeightedDatasetBatch
 
+from f9columnar.ml.hdf5_dataloader import MLHdf5Iterator, StackedDatasets, WeightedBatch, WeightedDatasetBatch
 from seesawml.fakes.models.loss import DensityRatio
 from seesawml.models.ensembles import torch_predict_from_ensemble_logits
 
@@ -220,7 +220,9 @@ def nn_reweight_with_errors(
         else:
             raise ValueError(f"Unsupported loss for ensemble reweighting: {density_ratio.name}")
 
-        r_mean, r_std = density_ratio.ratio_with_errors(f_mean, f_std)
+        r_samples = torch.exp(model_output.squeeze(-1))  # (channels, batch)
+        r_mean = torch.mean(r_samples, dim=0)
+        r_std = torch.std(r_samples, dim=0)
 
     return r_mean, r_std, f_mean, f_std
 

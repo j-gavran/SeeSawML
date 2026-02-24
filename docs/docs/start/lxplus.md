@@ -1,4 +1,13 @@
-Alternatively to running ML locally, `lxplus` can also be used on `ssh <user>@lxplus.cern.ch`. Virtual environment will be setup automatically after running the ML configuration script for the first time.
+!!! Warning "lxplus Support"
+    Not yet available! This section will be updated once support for `lxplus` is implemented.
+
+## GPU support
+
+GPU support on `lxplus` is available through `ssh <user>@lxplus-gpu.cern.ch`.
+
+## Condor support
+
+Alternatively to running ML locally, `lxplus` can also be used on `ssh <user>@lxplus.cern.ch`.
 
 Jobs can be submitted with `condor_ml_sub <condor_args> -c <command> -a <command_args>` command. To get help for all the available arguments, use `condor_ml_sub --help`.
 
@@ -9,12 +18,6 @@ condor_ssh_to_job -auto-retry <job_id>
 ```
 
 This will open a terminal session directly into the execution environment of the job, allowing you to interact with it in real time.
-
-!!! Danger
-    `lxplus` support is not tested as frequently as local runs. There might be issues with package dependencies or environment setup.
-
-!!! Info "Virtual Environment on lxplus"
-    Virtual environment for lxplus is already created (by using [`conda-pack`](https://conda.github.io/conda-pack/)) and it is copied to the Condor working directory for each job and unpacked there. You can find the current virtual environment [here](https://cernbox.cern.ch/files/spaces/eos/user/j/jgavrano/batch_venv.tar.gz). Also note that the packed virtual environment comes with a specific CUDA version so make sure that your GPU jobs are compatible with that.
 
 !!! Example "A Typical Workflow on lxplus"
     An example of a typical workflow on `lxplus` is described below.

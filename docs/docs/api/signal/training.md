@@ -1,25 +1,29 @@
 # Training
 
-::: seesaw.signal.training.sig_bkg_trainer
+::: seesawml.signal.training.sig_bkg_trainer
     options:
         show_root_heading: true
 
-::: seesaw.signal.training.calibrate
+::: seesawml.signal.training.calibrate
     options:
         show_root_heading: true
 
-::: seesaw.signal.training.trackers
+::: seesawml.signal.training.trackers
     options:
         show_root_heading: true
 
-::: seesaw.signal.training.tracker_plotting
+::: seesawml.signal.training.tracker_plotting
     options:
         show_root_heading: true
 
-::: seesaw.signal.training.group_plotting
+::: seesawml.signal.training.group_plotting
     options:
         show_root_heading: true
 
-::: seesaw.signal.utils
+::: seesawml.signal.utils
+    options:
+        show_root_heading: true
+
+::: seesawml.signal.training.significance
     options:
         show_root_heading: true

@@ -2,17 +2,14 @@ from abc import abstractmethod
 from typing import Any
 
 import torch
-from f9columnar.ml.hdf5_dataloader import WeightedBatchType
 from omegaconf import DictConfig
 from torchmetrics.classification import BinaryAccuracy
 
+from f9columnar.ml.hdf5_dataloader import WeightedBatchType
 from seesawml.fakes.models.crack_veto_model import get_crack_veto_model
 from seesawml.fakes.models.loss import DensityRatio, DensityRatioLoss
 from seesawml.fakes.utils import get_num_den_weights, sample_subtraction_weights
-from seesawml.models.ensembles import (
-    StackedEnsembleNetWrapper,
-    torch_predict_from_ensemble_logits,
-)
+from seesawml.models.ensembles import StackedEnsembleNetWrapper
 from seesawml.models.nn_modules import BaseBatchCompletedLightningModule
 from seesawml.models.tracker import Tracker
 from seesawml.models.utils import build_network
@@ -136,9 +133,11 @@ class NumDenClassifier(FakesNNClassifier):
         stage = "train" if self.training else "val"
 
         if self.has_ensemble:
-            f_mean, f_std = torch_predict_from_ensemble_logits(y_hat)
-            r_mean = torch.exp(f_mean)
-            r_std = r_mean * f_std
+            logits = y_hat.squeeze(-1)  # (channels, batch)
+            f_mean = torch.mean(logits, dim=0)
+            r_samples = torch.exp(logits)
+            r_mean = torch.mean(r_samples, dim=0)
+            r_std = torch.std(r_samples, dim=0)
             logits_for_stats = f_mean
             r_for_ess = r_mean
         else:
@@ -294,9 +293,11 @@ class RatioClassifier(FakesNNClassifier):
         batch_size = self.get_batch_size(batch)
 
         if self.has_ensemble:
-            f_mean, f_std = torch_predict_from_ensemble_logits(y_hat)
-            r_mean = torch.exp(f_mean)
-            r_std = r_mean * f_std
+            logits = y_hat.squeeze(-1)  # (channels, batch)
+            f_mean = torch.mean(logits, dim=0)
+            r_samples = torch.exp(logits)
+            r_mean = torch.mean(r_samples, dim=0)
+            r_std = torch.std(r_samples, dim=0)
             logits_for_stats = f_mean
             r_for_ess = r_mean
         else:

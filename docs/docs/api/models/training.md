@@ -1,33 +1,33 @@
 # Training
 
-::: seesaw.models.losses
+::: seesawml.models.losses
     options:
         show_root_heading: true
 
-::: seesaw.models.activations
+::: seesawml.models.activations
     options:
         show_root_heading: true
 
-::: seesaw.models.optimizers
+::: seesawml.models.optimizers
     options:
         show_root_heading: true
 
-::: seesaw.models.lr_schedulers
+::: seesawml.models.lr_schedulers
     options:
         show_root_heading: true
 
-::: seesaw.models.disco
+::: seesawml.models.disco
     options:
         show_root_heading: true
 
-::: seesaw.models.calibration
+::: seesawml.models.calibration
     options:
         show_root_heading: true
 
-::: seesaw.models.tracker
+::: seesawml.models.tracker
     options:
         show_root_heading: true
 
-::: seesaw.models.utils
+::: seesawml.models.utils
     options:
         show_root_heading: true

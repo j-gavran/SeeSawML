@@ -1,17 +1,17 @@
 # Transformers
 
-::: seesaw.models.transformers.event_transformer
+::: seesawml.models.transformers.event_transformer
     options:
         show_root_heading: true
 
-::: seesaw.models.transformers.set_transformer
+::: seesawml.models.transformers.set_transformer
     options:
         show_root_heading: true
 
-::: seesaw.models.transformers.pairwise_features
+::: seesawml.models.transformers.pairwise_features
     options:
         show_root_heading: true
 
-::: seesaw.models.transformers.particle_transformer
+::: seesawml.models.transformers.particle_transformer
     options:
         show_root_heading: true

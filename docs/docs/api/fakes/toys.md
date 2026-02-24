@@ -1,13 +1,13 @@
 # Fake Toys
 
-::: seesaw.fakes.toys.distributions
+::: seesawml.fakes.toys.distributions
     options:
         show_root_heading: true
 
-::: seesaw.fakes.toys.make_dataset
+::: seesawml.fakes.toys.make_dataset
     options:
         show_root_heading: true
 
-::: seesaw.fakes.toys.plotting
+::: seesawml.fakes.toys.plotting
     options:
         show_root_heading: true
