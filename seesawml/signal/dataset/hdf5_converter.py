@@ -1,4 +1,5 @@
 import copy
+import gc
 import glob
 import hashlib
 import json
@@ -56,11 +57,14 @@ class WeightsProcessor(Processor):
         super().__init__(name="weightsProcessor")
 
     def run(self, arrays: ak.Array) -> dict[str, ak.Array]:
-        arrays["weights"] = arrays["eventWeight"]
+        weights = arrays["eventWeight"]
+        arrays["weights"] = weights
+        del weights
 
-        arrays = ak.without_field(arrays, "eventWeight")
+        new_arrays = ak.without_field(arrays, "eventWeight")
+        del arrays
 
-        return {"arrays": arrays}
+        return {"arrays": new_arrays}
 
 
 class SignalMassProcessor(Processor):
@@ -203,7 +207,6 @@ class TypeFieldProcessor(Processor):
         self.type_field_config = type_field_config
 
     def run(self, arrays: ak.Array) -> dict[str, ak.Array]:
-        n_before = len(arrays)
         event_mask = None
 
         for obj_name, config in self.type_field_config.items():
@@ -225,6 +228,7 @@ class TypeFieldProcessor(Processor):
                 # Step 1: Compute event mask BEFORE filtering particles
                 has_valid = ak.sum(is_valid, axis=-1) >= 1
                 event_mask = has_valid if event_mask is None else (event_mask & has_valid)
+                del has_valid
 
                 # Step 2: Filter individual particles - apply mask to ALL fields with same prefix
                 prefix = PARTICLE_PREFIX_MAP.get(obj_name)
@@ -233,8 +237,12 @@ class TypeFieldProcessor(Processor):
                         if field.startswith(f"{prefix}_"):
                             arrays[field] = arrays[field][is_valid]
 
+            del type_values
+            del is_valid
+
         if event_mask is not None:
             arrays = arrays[event_mask]
+            del event_mask
 
         # Step 3: Pad type fields with 0 (invalid value for masking)
         for obj_name, config in self.type_field_config.items():
@@ -248,6 +256,7 @@ class TypeFieldProcessor(Processor):
 
             padded = ak.pad_none(arrays[type_field], max_len, clip=True)
             arrays[type_field] = ak.fill_none(padded, 0)
+            del padded
 
         return {"arrays": arrays}
 
@@ -305,10 +314,14 @@ class ReplaceInfProcessor(Processor):
             data = arrays[column]
             primitive = self._get_primitive(data)
             if primitive is None or not str(primitive).startswith("float"):
+                del data
                 continue
 
             replace_value = self._cast_replace_value(str(primitive))
-            arrays[column] = ak.where(np.isinf(data), replace_value, data)
+            inf_mask = np.isinf(data)
+            arrays[column] = ak.where(inf_mask, replace_value, data)
+            del data
+            del inf_mask
 
         return {"arrays": arrays}
 
@@ -331,13 +344,24 @@ class SameSignProcessor(Processor):
         # total number of full pairs we can possibly form from all charges
         total_pairs = ak.num(charges) // 2
 
+        # Clean up intermediates
+        del charges
+        del count_pos
+        del count_neg
+
         # it's valid only if all pairs we can form are same-sign pairs
-        return same_sign_pairs == total_pairs
+        result = same_sign_pairs == total_pairs
+        del same_sign_pairs
+        del total_pairs
+        return result
 
     def run(self, arrays: ak.Array) -> dict[str, ak.Array]:
         if "el_charge" in arrays.fields and "mu_charge" in arrays.fields:
             ss_pair_mask = self.same_sign_pairs_mask(arrays["el_charge"], arrays["mu_charge"])
-            arrays = arrays[ss_pair_mask]
+            new_arrays = arrays[ss_pair_mask]
+            del arrays
+            del ss_pair_mask
+            return {"arrays": new_arrays}
 
         return {"arrays": arrays}
 
@@ -620,6 +644,16 @@ def convert_to_hdf5(
         cut_flow=False,
     )
     event_loop.run(data_only=True)
+
+    # Cleanup to prevent memory leaks
+    for ds in datasets:
+        ds.dataloader = None
+        ds.file_desc_dct = None
+    del datasets
+    del event_loop
+    del analysis_collection
+    del analysis_graph
+    gc.collect()
 
     return other_label
 
