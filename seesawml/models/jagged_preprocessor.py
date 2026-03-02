@@ -340,10 +340,18 @@ class JaggedPreprocessor(nn.Module):
         if not valid_type_values:
             self.use_type_field_masking = False
             self._valid_type_tensors = nn.ParameterList()
+            self._logged_masking_stats = False
             return
 
+        missing_or_empty = [name for name in self.object_names if len(valid_type_values.get(name, [])) == 0]
+        if len(missing_or_empty) > 0:
+            raise ValueError(
+                "Type-field masking requires non-empty valid_type_values for all jagged collections. "
+                f"Missing/empty entries: {missing_or_empty}"
+            )
+
         self.use_type_field_masking = True
-        self._logged_masking_stats = False  # One-time logging flag
+        self._logged_masking_stats = False
 
         # ParameterList for ONNX compatibility (indexed by object position)
         self._valid_type_tensors = nn.ParameterList(
@@ -377,6 +385,12 @@ class JaggedPreprocessor(nn.Module):
             Boolean mask where True = invalid/masked, False = valid.
         """
         valid_types = self._valid_type_tensors[obj_idx]
+        if valid_types.numel() == 0:
+            obj_name = self.object_names[obj_idx] if obj_idx < len(self.object_names) else f"object_{obj_idx}"
+            raise RuntimeError(
+                f"[{obj_name}] Type-field masking active but valid_type_values are empty. "
+                "Provide at least one valid type value for this collection."
+            )
         is_valid = (type_tensor.unsqueeze(-1) == valid_types).any(dim=-1)
         return ~is_valid
 
@@ -651,16 +665,6 @@ class JaggedPreprocessor(nn.Module):
             if self.use_type_field_masking and type_tensors is not None and type_tensors[i] is not None:
                 # Type tensors passed from dataloader
                 mask_all = self._derive_mask_from_type(type_tensors[i], i)
-                # One-time logging of masking statistics (first batch only)
-                if not self._logged_masking_stats and x_full.shape[0] > 0:
-                    valid_types = self._valid_type_tensors[i]
-                    n_masked = mask_all.sum().item()
-                    n_total = mask_all.numel()
-                    pct = 100.0 * n_masked / n_total if n_total > 0 else 0
-                    logging.info(
-                        f"[green][{obj_name}] Type masking: {n_masked}/{n_total} "
-                        f"({pct:.1f}%) masked, valid_types={valid_types.tolist()}[/green]"
-                    )
             else:
                 # Fallback to padding-based masking
                 if not self._logged_masking_stats and self.use_type_field_masking:
@@ -684,12 +688,7 @@ class JaggedPreprocessor(nn.Module):
             numer_jagged_masks.append(mask_all)
             numer_jagged_embeddings.append(embedded)
 
-        # Set flag after logging all objects in first batch
-        if self.use_type_field_masking and not self._logged_masking_stats:
-            self._logged_masking_stats = True
-
         categ_jagged_embeddings: list[torch.Tensor] = []
-        categ_jagged_masks: list[torch.Tensor] = []
 
         for i in range(len(Xs)):
             jagged_idx = self.categ_jagged_idx[i]
@@ -697,15 +696,11 @@ class JaggedPreprocessor(nn.Module):
             x = Xs[i]
             x = x[:, :, jagged_idx].to(torch.int64)
 
-            # Use same mask as numerical features (already derived from type field)
-            mask_all = numer_jagged_masks[i]
-
             if self.disable_embeddings:
                 embedded = x
             else:
                 embedded = self.categ_jagged_embeddings[i](x)
 
-            categ_jagged_masks.append(mask_all)
             categ_jagged_embeddings.append(embedded)
 
         jagged_inputs: list[torch.Tensor] = []
@@ -713,10 +708,9 @@ class JaggedPreprocessor(nn.Module):
 
         for i in range(len(Xs)):
             numer_embed, categ_embed = numer_jagged_embeddings[i], categ_jagged_embeddings[i]
-            numer_mask, categ_mask = numer_jagged_masks[i], categ_jagged_masks[i]
+            jagged_mask = numer_jagged_masks[i]
 
             jagged_cat = torch.cat((numer_embed, categ_embed), dim=2)
-            jagged_mask = numer_mask & categ_mask
 
             if self.add_particle_types:
                 particle_type_token = self.particle_type_tokens[i]

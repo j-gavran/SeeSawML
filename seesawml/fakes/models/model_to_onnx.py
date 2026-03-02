@@ -8,9 +8,9 @@ from omegaconf import DictConfig, open_dict
 
 from seesawml.fakes.training.fakes_trainer import load_ratio_model
 from seesawml.fakes.training.run_pt_sliced_training import TRIGGER_PT
+from seesawml.inference.onnx import save_metadata, test_onnx_export
 from seesawml.utils.helpers import setup_analysis_dirs
 from seesawml.utils.loggers import setup_logger
-from seesawml.utils.onnx_utils import get_metadata, test_onnx_export
 
 TRIGGER_PT_REVERSE = {v: k for k, v in TRIGGER_PT.items()}
 
@@ -49,7 +49,15 @@ def convert_ratio_model(
         raise ValueError(f"Model {model_name} not supported for ONNX conversion.")
 
     # get metadata
-    metadata = get_metadata(checkpoint_path, model_save_name, "events", onnx_dir, extra_metadata=extra_metadata)
+    metadata = save_metadata(
+        checkpoint_path=checkpoint_path,
+        model_save_name=model_save_name,
+        onnx_dir=onnx_dir,
+        scaling_embedded=False,
+        collection_names=None,
+    )
+    if extra_metadata:
+        metadata.update(extra_metadata)
 
     # check if pt slice is present
     if metadata.get("pt_slice", None) is not None:

@@ -871,9 +871,15 @@ class JaggedSigBkgMulticlassClassifierTracker(SigBkgMulticlassTrackerBase):
             self._set_class_labels(reports)
 
         Xs: list[torch.Tensor] = []
+        type_tensors: list[torch.Tensor | None] = []
+        has_any_type_tensor = False
         for k in batch[0].keys():
             if k != "events":
                 Xs.append(batch[0][k][0])
+                type_tensor = batch[0][k][3]
+                type_tensors.append(type_tensor)
+                if type_tensor is not None:
+                    has_any_type_tensor = True
 
         X, y_true, mc_weights = batch[0]["events"][0], batch[0]["events"][1], batch[0]["events"][2]
         if y_true is None:
@@ -882,7 +888,7 @@ class JaggedSigBkgMulticlassClassifierTracker(SigBkgMulticlassTrackerBase):
         y_true = y_true.cpu()
         mc_weights = mc_weights.cpu() if mc_weights is not None else torch.ones_like(y_true, dtype=torch.float32)
 
-        y_pred_logits = self.module(X, Xs)
+        y_pred_logits = self.module(X, Xs, type_tensors=type_tensors if has_any_type_tensor else None)
         y_pred = torch.softmax(y_pred_logits, dim=1).cpu()
 
         if self.current_events == 0:

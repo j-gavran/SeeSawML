@@ -183,13 +183,20 @@ def derive_energy_from_mass(
         raise ValueError("rest_mass must be non-negative when deriving energy.")
 
     mass = pt.new_tensor(rest_mass)
-    cosh_eta = torch.cosh(eta)
+    # Use exp-based cosh for ONNX compatibility: cosh(x) = (e^x + e^(-x)) / 2
+    cosh_eta = (torch.exp(eta) + torch.exp(-eta)) * 0.5
     energy_sq = (pt * cosh_eta) ** 2 + mass**2
     return torch.sqrt(torch.clamp(energy_sq, min=epsilon))
 
 
 class PairwiseFeaturesCalculator(nn.Module):
-    def __init__(self, epsilon: float = 1e-6, use_log: bool = True, quantities: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        epsilon: float = 1e-6,
+        use_log: bool = True,
+        quantities: list[str] | None = None,
+        onnx_compatible: bool = False,
+    ) -> None:
         """Pairwise features calculator.
 
         Parameters
@@ -201,11 +208,15 @@ class PairwiseFeaturesCalculator(nn.Module):
         quantities : list[str] | None, optional
             List of quantities to compute. If None, computes all available quantities. Available quantities: "delta_r",
             "kt", "z", "m2". If specified, must be a subset of these, by default None. If None, all quantities are computed.
+        onnx_compatible : bool, optional
+            If True, computes full N×N matrix using broadcasting (ONNX-compatible but slower).
+            If False, computes only lower triangle and mirrors to upper triangle (faster), by default False.
 
         """
         super().__init__()
         self.epsilon = epsilon
         self.use_log = use_log
+        self.onnx_compatible = onnx_compatible
 
         available_quantities = {
             "delta_r": False,
@@ -233,7 +244,9 @@ class PairwiseFeaturesCalculator(nn.Module):
         return torch.log1p(torch.clamp(x, min=self.epsilon))
 
     def _calculate_pz(self, pt: torch.Tensor, eta: torch.Tensor) -> torch.Tensor:
-        return pt * torch.sinh(eta)
+        # Use exp-based sinh for ONNX compatibility: sinh(x) = (e^x - e^(-x)) / 2
+        sinh_eta = (torch.exp(eta) - torch.exp(-eta)) * 0.5
+        return pt * sinh_eta
 
     def _calculate_rapidity(self, pz: torch.Tensor, energy: torch.Tensor) -> torch.Tensor:
         e_plus_pz = torch.clamp(energy + pz, min=self.epsilon)
@@ -342,10 +355,119 @@ class PairwiseFeaturesCalculator(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Return ParT-style pairwise features with shape (B, N, N, C).
 
-        Uses rapidity (computed from E and pz) instead of pseudorapidity for angular features. Only off-diagonal pairs
-        (lower triangle) are computed and mirrored to upper triangle. Diagonal is zero.
+        Uses rapidity (computed from E and pz) instead of pseudorapidity for angular features.
+        If onnx_compatible=True, computes full N×N matrix using broadcasting.
+        Otherwise, computes only lower triangle and mirrors to upper triangle (faster).
+        Diagonal is always zero.
 
         """
+        if self.onnx_compatible:
+            return self._forward_full_matrix(pt, eta, phi, energy, mask)
+        else:
+            return self._forward_triangular(pt, eta, phi, energy, mask)
+
+    def _forward_full_matrix(
+        self,
+        pt: torch.Tensor,
+        eta: torch.Tensor,
+        phi: torch.Tensor,
+        energy: torch.Tensor,
+        mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Full N×N matrix computation using broadcasting (ONNX-compatible)."""
+        b, n = pt.shape
+
+        # Build pairwise mask: True if either particle is padded (B, N, N)
+        pair_mask = mask.unsqueeze(2) | mask.unsqueeze(1)
+
+        # Pre-compute pz for rapidity and m2
+        pz = self._calculate_pz(pt, eta)
+
+        calculated: list[torch.Tensor] = []
+        delta_r: torch.Tensor | None = None
+
+        if self.use_delta_r or self.use_kt:
+            rapidity = self._calculate_rapidity(pz, energy)
+
+            # Delta rapidity: (B, N, N)
+            delta_rap = rapidity.unsqueeze(2) - rapidity.unsqueeze(1)
+
+            # Delta phi with wrapping: (B, N, N)
+            delta_phi = self._wrap_delta_phi(phi.unsqueeze(2) - phi.unsqueeze(1))
+
+            # Delta R: (B, N, N)
+            delta_r = torch.sqrt(delta_rap.square() + delta_phi.square())
+
+            if self.use_delta_r:
+                delta_r_out = self._log1p_clamp(delta_r) if self.use_log else delta_r
+                calculated.append(delta_r_out)
+
+        if self.use_kt:
+            # min(pt_i, pt_j) * delta_r
+            pt_i = pt.unsqueeze(2)  # (B, N, 1)
+            pt_j = pt.unsqueeze(1)  # (B, 1, N)
+            min_pt = torch.minimum(pt_i, pt_j)
+
+            kt = min_pt * delta_r  # type: ignore[operator]
+
+            if self.use_log:
+                kt = self._log1p_clamp(kt)
+
+            calculated.append(kt)
+
+        if self.use_z:
+            pt_i = pt.unsqueeze(2)
+            pt_j = pt.unsqueeze(1)
+            min_pt = torch.minimum(pt_i, pt_j)
+
+            z = min_pt / (pt_i + pt_j + self.epsilon)
+
+            if self.use_log:
+                z = self._log1p_clamp(z)
+
+            calculated.append(z)
+
+        if self.use_m2:
+            # Compute 4-momentum components
+            px = pt * torch.cos(phi)
+            py = pt * torch.sin(phi)
+
+            # Sum of 4-momenta for pairs: (B, N, N)
+            sum_px = px.unsqueeze(2) + px.unsqueeze(1)
+            sum_py = py.unsqueeze(2) + py.unsqueeze(1)
+            sum_pz = pz.unsqueeze(2) + pz.unsqueeze(1)
+            sum_energy = energy.unsqueeze(2) + energy.unsqueeze(1)
+
+            # Invariant mass squared
+            m2 = sum_energy.square() - sum_px.square() - sum_py.square() - sum_pz.square()
+
+            if self.use_log:
+                m2 = self._log1p_clamp(m2)
+
+            calculated.append(m2)
+
+        # Stack features: (B, N, N, C)
+        features = torch.stack(calculated, dim=-1)
+
+        # Apply pair mask (zero out padded pairs)
+        features = features.masked_fill(pair_mask.unsqueeze(-1), 0.0)
+
+        # Zero out diagonal (self-pairs) using mask multiplication for ONNX compatibility
+        # Create (N, N) mask where diagonal is 0, off-diagonal is 1
+        diag_mask = 1.0 - torch.eye(n, dtype=features.dtype, device=features.device)
+        features = features * diag_mask.view(1, n, n, 1)
+
+        return features, pair_mask
+
+    def _forward_triangular(
+        self,
+        pt: torch.Tensor,
+        eta: torch.Tensor,
+        phi: torch.Tensor,
+        energy: torch.Tensor,
+        mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Lower triangle computation with mirroring (faster, not ONNX-compatible)."""
         b, n = pt.shape
 
         # Get lower triangular indices (offset=-1 excludes diagonal)
@@ -354,6 +476,8 @@ class PairwiseFeaturesCalculator(nn.Module):
         mask_i, mask_j = mask[:, i], mask[:, j]
 
         calculated: list[torch.Tensor] = []
+        pz: torch.Tensor | None = None
+        delta_r_ij: torch.Tensor | None = None
 
         if self.use_delta_r or self.use_kt:
             pz = self._calculate_pz(pt, eta)
@@ -364,7 +488,7 @@ class PairwiseFeaturesCalculator(nn.Module):
                 calculated.append(delta_r_ij)
 
         if self.use_kt:
-            kt_ij = self._calculate_kt_ij(pt, delta_r_ij, i, j)
+            kt_ij = self._calculate_kt_ij(pt, delta_r_ij, i, j)  # type: ignore[arg-type]
             calculated.append(kt_ij)
 
         if self.use_z:
@@ -372,7 +496,7 @@ class PairwiseFeaturesCalculator(nn.Module):
             calculated.append(z_ij)
 
         if self.use_m2:
-            if not (self.use_delta_r or self.use_kt):
+            if pz is None:
                 pz = self._calculate_pz(pt, eta)
 
             invariant_mass_sq_ij = self._calculate_invariant_mass_sq_ij(pt, phi, pz, energy, i, j)
@@ -388,7 +512,10 @@ class PairwiseFeaturesCalculator(nn.Module):
         features[:, i, j, :] = pair_features
         features[:, j, i, :] = pair_features  # Mirror to upper triangle
 
-        return features, pair_mask
+        # Return full pairwise mask (B, N, N) for consistency with _forward_full_matrix
+        full_pair_mask = mask.unsqueeze(2) | mask.unsqueeze(1)
+
+        return features, full_pair_mask
 
 
 class PairwiseFeaturesEmbeddingModule(nn.Module):
@@ -416,6 +543,7 @@ class PairwiseFeaturesEmbeddingModule(nn.Module):
     def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
         if mask is not None:
             mask = ~mask
+            mask = mask.unsqueeze(1)  # (B, L) -> (B, 1, L) for MaskedBatchNorm1d
             mask = mask.to(dtype=x.dtype)
 
         x = self.batch_norms[0](x, mask)
@@ -430,11 +558,14 @@ class PairwiseFeaturesEmbeddingModule(nn.Module):
 
 class PairwiseFeaturesEmbedder(nn.Module):
     def __init__(
-        self, input_dim: int, embed_dims: tuple[int, ...], activation: str = "GELU", post_ln: bool = False
+        self,
+        input_dim: int,
+        embed_dims: tuple[int, ...],
+        activation: str = "GELU",
+        post_ln: bool = False,
+        onnx_compatible: bool = False,
     ) -> None:
         """CNN-based embedding for pairwise features.
-
-        Computes embeddings only for off-diagonal pairs (lower triangle) and mirrors to upper triangle for efficiency.
 
         Parameters
         ----------
@@ -446,11 +577,14 @@ class PairwiseFeaturesEmbedder(nn.Module):
             Activation function to use between layers, by default "GELU".
         post_ln : bool, optional
             Whether to apply LayerNorm after the final embedding layer, by default False.
+        onnx_compatible : bool, optional
+            If True, processes full N×N matrix (ONNX-compatible but slower).
+            If False, processes only lower triangle and mirrors to upper triangle (faster), by default False.
 
         Note
         ----
-        Forward embeds pairwise features and returns tensor shaped (B, output_dim, N, N). Only processes lower triangle
-        pairs and mirrors to upper triangle. Diagonal remains zero.
+        Forward embeds pairwise features and returns tensor shaped (B, output_dim, N, N).
+        Diagonal remains zero.
 
         """
         super().__init__()
@@ -460,6 +594,7 @@ class PairwiseFeaturesEmbedder(nn.Module):
         self.embed = PairwiseFeaturesEmbeddingModule(input_dim, embed_dims, activation)
 
         self.output_dim = embed_dims[-1]
+        self.onnx_compatible = onnx_compatible
 
         self.post_ln: nn.LayerNorm | None
 
@@ -469,6 +604,61 @@ class PairwiseFeaturesEmbedder(nn.Module):
             self.post_ln = None
 
     def forward(self, pairwise_features: torch.Tensor, pairwise_mask: torch.Tensor | None = None) -> torch.Tensor:
+        """Embed pairwise features using Conv1d layers.
+
+        Parameters
+        ----------
+        pairwise_features : torch.Tensor
+            Pairwise features of shape (B, N, N, C).
+        pairwise_mask : torch.Tensor | None
+            Mask of shape (B, N, N) or (B, 1, N, N) where True indicates padded pairs.
+
+        Returns
+        -------
+        torch.Tensor
+            Embedded features of shape (B, output_dim, N, N).
+        """
+        if self.onnx_compatible:
+            return self._forward_full_matrix(pairwise_features, pairwise_mask)
+        else:
+            return self._forward_triangular(pairwise_features, pairwise_mask)
+
+    def _forward_full_matrix(
+        self, pairwise_features: torch.Tensor, pairwise_mask: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        """Full N×N matrix processing (ONNX-compatible)."""
+        b, n, _, c = pairwise_features.shape
+
+        # Flatten N×N to single dimension: (B, N, N, C) -> (B, N*N, C) -> (B, C, N*N)
+        x = pairwise_features.reshape(b, n * n, c).permute(0, 2, 1)
+
+        # Flatten mask if provided: (B, N, N) or (B, 1, N, N) -> (B, N*N)
+        # Keep True=padded convention (embed() inverts internally)
+        flat_mask: torch.Tensor | None = None
+        if pairwise_mask is not None:
+            if pairwise_mask.dim() == 4:
+                pairwise_mask = pairwise_mask.squeeze(1)
+            flat_mask = pairwise_mask.reshape(b, n * n)
+
+        # Apply embedding network (Conv1d expects (B, C, L))
+        x = self.embed(x, flat_mask)
+
+        # Reshape back to (B, output_dim, N, N)
+        output = x.reshape(b, self.output_dim, n, n)
+
+        # Optional post LayerNorm (over the embedding dimension)
+        if self.post_ln is not None:
+            # (B, output_dim, N, N) -> (B, N, N, output_dim) for LayerNorm
+            output = output.permute(0, 2, 3, 1)
+            output = self.post_ln(output)
+            output = output.permute(0, 3, 1, 2)
+
+        return output
+
+    def _forward_triangular(
+        self, pairwise_features: torch.Tensor, pairwise_mask: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        """Lower triangle processing with mirroring (faster, not ONNX-compatible)."""
         b, n, _, _ = pairwise_features.shape
 
         # Get lower triangular indices (offset=-1 excludes diagonal)
@@ -480,8 +670,15 @@ class PairwiseFeaturesEmbedder(nn.Module):
         # Reshape for Conv1d: (B, C, num_pairs)
         x = lower_tri_features.permute(0, 2, 1)
 
+        # Extract lower triangle mask if provided
+        flat_mask: torch.Tensor | None = None
+        if pairwise_mask is not None:
+            if pairwise_mask.dim() == 4:
+                pairwise_mask = pairwise_mask.squeeze(1)
+            flat_mask = pairwise_mask[:, i, j]
+
         # Apply embedding network
-        x = self.embed(x, pairwise_mask)
+        x = self.embed(x, flat_mask)
 
         # x shape: (B, output_dim, num_pairs) -> need (B, num_pairs, output_dim) for assignment
         embedded = x.permute(0, 2, 1)  # (B, num_pairs, output_dim)
