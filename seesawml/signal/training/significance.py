@@ -217,7 +217,7 @@ def binned_significance(
     scores: np.ndarray,
     weights: np.ndarray,
     is_signal: np.ndarray,
-    n_bins: int = 10,
+    n_bins: int = 30,
     score_range: tuple[float, float] | None = None,
 ) -> BinnedSignificanceResult:
     """Compute binned and integrated significance.

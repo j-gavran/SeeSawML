@@ -109,6 +109,10 @@ def main(config: DictConfig) -> None:
                 if pad_value is not None:
                     x_i = x_i[x_i != pad_value]
 
+                if x_i.size == 0:
+                    continue
+                if x_i.size == 1:
+                    x_i = x_i.item()  # pytdigest bug: float() fails for 1-element arrays in numpy 2.x
                 quantile_digests[ds_key][f_i].update(x_i)
 
         progress.update(bar, advance=1)

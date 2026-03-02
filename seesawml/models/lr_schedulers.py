@@ -188,7 +188,9 @@ class CosineWarmupScheduler(LRScheduler):
             if self.n_steps < self.n_warmup_steps:
                 lr = self.min_lr + (self.max_lr - self.min_lr) * (self.n_steps / self.n_warmup_steps)
             else:
-                t = (self.n_steps - self.n_warmup_steps) % self.T_max
+                t = self.n_steps - self.n_warmup_steps
+                # Clamp to T_max to avoid oscillation - single decay to min_lr
+                t = min(t, self.T_max)
                 cosine_decay = 0.5 * (1 + math.cos(math.pi * t / self.T_max))
                 lr = self.min_lr + (self.max_lr - self.min_lr) * cosine_decay
             lrs.append(lr)
